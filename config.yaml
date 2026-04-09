@@ -52,10 +52,10 @@ dimensions:
 # Uses less-than for boundaries:  LOW if score < 2.0, etc.
 
 thresholds:
-  LOW: 2.0
-  MEDIUM: 3.0
-  HIGH: 4.0
-  # CRITICAL: score >= 4.0
+  LOW: 2.0       # score <= 2.0
+  MEDIUM: 3.0    # score <= 3.0
+  HIGH: 4.0      # score <= 4.0
+  CRITICAL: 5.0  # score > 4.0 (anything above HIGH threshold)
 
 # ─── LLM Settings ────────────────────────────────────────────────────
 
