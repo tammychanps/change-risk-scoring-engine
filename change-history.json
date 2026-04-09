@@ -1,0 +1,202 @@
+[
+  {
+    "id": "CR-2025-0301",
+    "title": "Migrate core banking API from REST v2 to v3",
+    "change_type": "application",
+    "systems_affected": ["core-banking-api", "mobile-app", "web-portal"],
+    "risk_score": 3.8,
+    "outcome": "success",
+    "outcome_notes": "Completed within window. Minor latency spike (12ms) during cutover resolved in 5 minutes.",
+    "date": "2025-11-15"
+  },
+  {
+    "id": "CR-2025-0288",
+    "title": "Upgrade PostgreSQL cluster from 14 to 16",
+    "change_type": "database",
+    "systems_affected": ["transaction-db", "reporting-db", "audit-log"],
+    "risk_score": 4.1,
+    "outcome": "success",
+    "outcome_notes": "Executed blue-green cutover. Zero downtime. Post-migration query performance improved 18%.",
+    "date": "2025-11-02"
+  },
+  {
+    "id": "CR-2025-0275",
+    "title": "Deploy new fraud detection ML model v2.4",
+    "change_type": "application",
+    "systems_affected": ["fraud-detection", "transaction-service"],
+    "risk_score": 3.2,
+    "outcome": "success",
+    "outcome_notes": "Canary deployment over 4 hours. False positive rate dropped from 2.1% to 1.4%.",
+    "date": "2025-10-20"
+  },
+  {
+    "id": "CR-2025-0260",
+    "title": "Migrate payment gateway from on-prem to AWS EC2",
+    "change_type": "infrastructure",
+    "systems_affected": ["payment-gateway", "transaction-service", "settlement-engine"],
+    "risk_score": 4.3,
+    "outcome": "rollback",
+    "outcome_notes": "TLS certificate chain issue caused 502 errors at 03:15. Rolled back to on-prem at 03:42. Root cause: intermediate cert not included in ELB config.",
+    "date": "2025-10-08"
+  },
+  {
+    "id": "CR-2025-0245",
+    "title": "Patch OpenSSL CVE-2025-1234 across all production hosts",
+    "change_type": "security",
+    "systems_affected": ["all-production-hosts"],
+    "risk_score": 2.8,
+    "outcome": "success",
+    "outcome_notes": "Rolling patch applied to 48 hosts over 3 hours. No service interruption.",
+    "date": "2025-09-28"
+  },
+  {
+    "id": "CR-2025-0232",
+    "title": "Enable MFA enforcement for internal admin portal",
+    "change_type": "security",
+    "systems_affected": ["admin-portal", "identity-service"],
+    "risk_score": 2.1,
+    "outcome": "success",
+    "outcome_notes": "Phased rollout by department. 3 support tickets from users who had not enrolled. Resolved same day.",
+    "date": "2025-09-15"
+  },
+  {
+    "id": "CR-2025-0220",
+    "title": "Replace Kafka cluster with AWS MSK",
+    "change_type": "infrastructure",
+    "systems_affected": ["event-bus", "notification-service", "audit-log", "fraud-detection"],
+    "risk_score": 4.5,
+    "outcome": "incident",
+    "outcome_notes": "Consumer group rebalancing caused 22-minute message processing delay. P2 incident declared. No data loss but SLA breach on notification delivery.",
+    "date": "2025-09-01"
+  },
+  {
+    "id": "CR-2025-0210",
+    "title": "Deploy containerized auth service to EKS",
+    "change_type": "infrastructure",
+    "systems_affected": ["auth-service", "api-gateway"],
+    "risk_score": 3.5,
+    "outcome": "success",
+    "outcome_notes": "Blue-green deployment. Health checks passed. Auth latency reduced from 120ms to 45ms.",
+    "date": "2025-08-18"
+  },
+  {
+    "id": "CR-2025-0198",
+    "title": "Add PCI DSS audit logging to payment endpoints",
+    "change_type": "compliance",
+    "systems_affected": ["payment-gateway", "audit-log"],
+    "risk_score": 2.5,
+    "outcome": "success",
+    "outcome_notes": "No functional changes to payment flow. Log volume increased 40% — pre-provisioned storage handled it.",
+    "date": "2025-08-05"
+  },
+  {
+    "id": "CR-2025-0185",
+    "title": "Migrate customer data to encrypted-at-rest S3 buckets",
+    "change_type": "security",
+    "systems_affected": ["customer-data-lake", "reporting-service", "compliance-export"],
+    "risk_score": 3.6,
+    "outcome": "success",
+    "outcome_notes": "Migrated 2.4TB over weekend window. Verified checksums on 100% of objects. Reporting queries unaffected.",
+    "date": "2025-07-22"
+  },
+  {
+    "id": "CR-2025-0172",
+    "title": "Upgrade Kubernetes cluster from 1.27 to 1.29",
+    "change_type": "infrastructure",
+    "systems_affected": ["eks-cluster", "all-microservices"],
+    "risk_score": 4.0,
+    "outcome": "success",
+    "outcome_notes": "Node-by-node rolling upgrade. Two pods failed liveness checks due to deprecated API calls — patched and redeployed.",
+    "date": "2025-07-10"
+  },
+  {
+    "id": "CR-2025-0160",
+    "title": "Deploy real-time wire transfer monitoring",
+    "change_type": "application",
+    "systems_affected": ["wire-transfer-service", "fraud-detection", "notification-service"],
+    "risk_score": 3.9,
+    "outcome": "success",
+    "outcome_notes": "Feature flag enabled for 10% traffic, then ramped to 100% over 2 hours. Caught 3 suspicious transfers in first week.",
+    "date": "2025-06-28"
+  },
+  {
+    "id": "CR-2025-0148",
+    "title": "Database schema migration for SWIFT ISO 20022",
+    "change_type": "database",
+    "systems_affected": ["transaction-db", "wire-transfer-service", "settlement-engine"],
+    "risk_score": 4.2,
+    "outcome": "rollback",
+    "outcome_notes": "Migration script timed out on transactions table (890M rows). Rolled back at 04:30. Re-planned with batched migration approach.",
+    "date": "2025-06-15"
+  },
+  {
+    "id": "CR-2025-0135",
+    "title": "Enable WAF rules for public-facing APIs",
+    "change_type": "security",
+    "systems_affected": ["api-gateway", "web-portal"],
+    "risk_score": 2.9,
+    "outcome": "success",
+    "outcome_notes": "Deployed in monitor-only mode for 1 week, then switched to block mode. Blocked 1,200 malicious requests in first 24 hours.",
+    "date": "2025-06-01"
+  },
+  {
+    "id": "CR-2025-0122",
+    "title": "Migrate CI/CD pipeline from Jenkins to GitHub Actions",
+    "change_type": "tooling",
+    "systems_affected": ["ci-cd-pipeline", "deployment-automation"],
+    "risk_score": 2.3,
+    "outcome": "success",
+    "outcome_notes": "Parallel run for 2 weeks. Build times reduced 35%. All teams migrated by EOW.",
+    "date": "2025-05-18"
+  },
+  {
+    "id": "CR-2025-0110",
+    "title": "Replace legacy ACH batch processor with real-time engine",
+    "change_type": "application",
+    "systems_affected": ["ach-processor", "settlement-engine", "reconciliation-service"],
+    "risk_score": 4.4,
+    "outcome": "incident",
+    "outcome_notes": "Race condition in dual-write mode caused 14 duplicate settlements totaling $23K. P1 incident. Manual reversal completed within 4 hours. No customer impact due to T+1 settlement window.",
+    "date": "2025-05-05"
+  },
+  {
+    "id": "CR-2025-0098",
+    "title": "Deploy API rate limiting for partner integrations",
+    "change_type": "application",
+    "systems_affected": ["api-gateway", "partner-portal"],
+    "risk_score": 2.6,
+    "outcome": "success",
+    "outcome_notes": "Gradual enforcement over 1 week. Two partners exceeded limits — contacted proactively. No service disruption.",
+    "date": "2025-04-22"
+  },
+  {
+    "id": "CR-2025-0085",
+    "title": "Upgrade Redis cluster to 7.2 with TLS",
+    "change_type": "infrastructure",
+    "systems_affected": ["redis-cluster", "session-service", "cache-layer"],
+    "risk_score": 3.3,
+    "outcome": "success",
+    "outcome_notes": "Sentinel-managed failover during upgrade. 800ms blip on session lookups. TLS overhead added 2ms avg latency — within budget.",
+    "date": "2025-04-10"
+  },
+  {
+    "id": "CR-2025-0073",
+    "title": "Migrate mobile app push notifications to FCM v2",
+    "change_type": "application",
+    "systems_affected": ["notification-service", "mobile-app"],
+    "risk_score": 2.4,
+    "outcome": "success",
+    "outcome_notes": "Server-side only change. Delivery rate improved from 94% to 98.5%. No client app update required.",
+    "date": "2025-03-28"
+  },
+  {
+    "id": "CR-2025-0061",
+    "title": "Emergency patch for Log4j-style RCE in transaction logger",
+    "change_type": "security",
+    "systems_affected": ["transaction-service", "audit-log", "payment-gateway"],
+    "risk_score": 3.7,
+    "outcome": "success",
+    "outcome_notes": "Emergency CAB approval. Patched 12 services in 90 minutes. WAF virtual patch deployed as interim measure while services restarted.",
+    "date": "2025-03-15"
+  }
+]

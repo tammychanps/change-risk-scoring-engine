@@ -1,0 +1,14 @@
+{
+  "id": "CR-2026-0042",
+  "title": "Migrate Payment Gateway to AWS EKS",
+  "description": "Move payment processing from EC2 to EKS for better auto-scaling and container orchestration",
+  "change_type": "infrastructure",
+  "systems_affected": ["payment-gateway", "transaction-service", "fraud-detection"],
+  "deployment_window": "Saturday 02:00-06:00 PST",
+  "rollback_plan": "Revert DNS to previous EC2 instances, estimated 15 minutes. Tested in staging.",
+  "rollback_tested": true,
+  "team_experience_similar": 3,
+  "recent_incidents_30d": 1,
+  "security_impact": true,
+  "customer_facing": true
+}

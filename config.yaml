@@ -1,0 +1,74 @@
+# Change Risk Scoring Engine — Configuration
+# Adjust weights and thresholds to match your organization's risk appetite.
+
+# ─── Risk Dimensions ─────────────────────────────────────────────────
+# Each dimension is scored 1–5 by the engine.
+# Weights (1–3) control how much each dimension contributes to the
+# overall weighted average.  Higher weight = more influence.
+
+dimensions:
+  scope_impact:
+    label: "Scope / Blast Radius"
+    description: "Number and criticality of systems affected"
+    weight: 3
+
+  change_complexity:
+    label: "Change Complexity"
+    description: "Type and technical complexity of the change"
+    weight: 3
+
+  security_exposure:
+    label: "Security Exposure"
+    description: "Whether the change touches auth, encryption, PII, or payments"
+    weight: 3
+
+  customer_visibility:
+    label: "Customer Visibility"
+    description: "Degree to which end-users would notice a failure"
+    weight: 2
+
+  rollback_readiness:
+    label: "Rollback Readiness"
+    description: "Quality and test coverage of the rollback plan"
+    weight: 2
+
+  deployment_window:
+    label: "Deployment Window"
+    description: "Timing relative to peak traffic and business hours"
+    weight: 1
+
+  team_experience:
+    label: "Team Experience"
+    description: "Number of similar changes the team has completed"
+    weight: 2
+
+  recent_stability:
+    label: "Recent Stability"
+    description: "Incidents on affected systems in the last 30 days"
+    weight: 2
+
+# ─── Score Thresholds ─────────────────────────────────────────────────
+# Weighted average score → risk level mapping.
+# Uses less-than for boundaries:  LOW if score < 2.0, etc.
+
+thresholds:
+  LOW: 2.0
+  MEDIUM: 3.0
+  HIGH: 4.0
+  # CRITICAL: score >= 4.0
+
+# ─── LLM Settings ────────────────────────────────────────────────────
+
+ollama:
+  model: "llama3.1:8b"
+  base_url: "http://localhost:11434"
+  temperature: 0.3
+
+# ─── Report Settings ─────────────────────────────────────────────────
+
+report:
+  title: "Change Risk Assessment"
+  subtitle: "CAB Review Document"
+  similar_changes_count: 3          # top-N past changes to display
+  include_narrative: true
+  include_mitigations: true

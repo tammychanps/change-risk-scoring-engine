@@ -1,0 +1,20 @@
+# Portfolio Projects — Shared Dependencies
+# Install: pip install -r requirements.txt
+
+# Core
+pandas>=2.0
+pyyaml>=6.0
+
+# LangChain (RAG pipeline)
+langchain-core>=0.3,<0.4
+langchain-community>=0.3,<0.4
+langchain-ollama>=0.3,<0.4
+
+# Vector store (in-memory, no database server needed)
+faiss-cpu>=1.7
+
+# Testing
+pytest>=8.0
+
+# Optional: web demo for Change Risk Scorer
+streamlit>=1.30
