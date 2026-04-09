@@ -93,8 +93,8 @@ def create_retriever(documents: List[dict], k: int = 3) -> Optional[object]:
 
     try:
         from langchain_community.vectorstores import FAISS
-        from langchain_community.embeddings import OllamaEmbeddings
-        from langchain.schema import Document
+        from langchain_ollama import OllamaEmbeddings
+        from langchain_core.documents import Document
 
         # Convert to LangChain Documents
         lc_docs = [

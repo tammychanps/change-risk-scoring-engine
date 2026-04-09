@@ -1,5 +1,11 @@
 # Change Risk Scoring Engine
 
+![CI](https://github.com/tammychanps/change-risk-scoring-engine/actions/workflows/ci.yml/badge.svg)
+
+## TL;DR
+
+Scores production change requests on 8 weighted risk dimensions, retrieves similar past changes via FAISS vector search, and generates a CAB-ready risk narrative with Go/No-Go recommendations using a local LLM (Ollama). Deterministic scoring + AI narrative layer = auditable and explainable. Runs fully offline, all data stays local — built for regulated financial services. **61 pytest tests, Python 3.12.**
+
 A Python tool that scores production change requests against 8 weighted risk dimensions, retrieves similar past changes via vector search (RAG), and generates a CAB-ready risk narrative with Go/No-Go recommendations. Built for financial services environments where change management is auditable and data stays local.
 
 ## Why This Matters
