@@ -83,6 +83,51 @@ def save_report(filepath: str, content: str):
     print(f"[OK] Report saved: {filepath}")
 
 
+def score_gauge(score: float, level: str, max_score: float = 5.0) -> str:
+    """
+    Render a single-row inline gauge table showing score, level, and band position.
+
+    Output is a markdown table that puts score, color-coded level, and a text
+    gauge in one row so reviewers see the position at a glance.
+    """
+    bands = ["LOW", "MED", "HIGH", "CRIT"]
+    level_short = {
+        "LOW": "LOW",
+        "MEDIUM": "MED",
+        "HIGH": "HIGH",
+        "CRITICAL": "CRIT",
+    }.get(level.upper(), level.upper()[:4])
+
+    # Mark the active band with a triangle
+    gauge_parts = []
+    for band in bands:
+        if band == level_short:
+            gauge_parts.append(f"{band}▲")
+        else:
+            gauge_parts.append(band)
+    gauge_str = " │ ".join(gauge_parts)
+
+    badge = risk_badge(level)
+    rows = [[f"**{score} / {max_score}**", badge, f"`{gauge_str}`"]]
+    return table(["Score", "Level", "Where it sits"], rows)
+
+
+def decision_badge(decision: str) -> str:
+    """
+    Color-coded badge for Go/No-Go recommendations.
+
+    Accepts: GO, GO_CONDITIONAL, NO_GO (or human-readable variants).
+    """
+    key = decision.upper().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    badges = {
+        "GO": "🟢 **GO**",
+        "GO_CONDITIONAL": "🟡 **GO (CONDITIONAL)**",
+        "NO_GO": "🔴 **NO-GO**",
+        "NOGO": "🔴 **NO-GO**",
+    }
+    return badges.get(key, f"**{decision.upper()}**")
+
+
 def score_to_level(score: float, thresholds: Dict[str, float] = None) -> str:
     """Convert a numeric score to a risk level string."""
     if thresholds is None:
