@@ -19,11 +19,15 @@ from scorer import (
     DIMENSION_SCORERS,
     _build_overview_table,
     build_report,
+    build_revision_record,
     classify_risk,
     decision_key,
     explain_high_score,
     generate_mitigations,
     go_nogo,
+    load_revision_history,
+    render_revision_history,
+    save_revision_record,
     score_change,
     score_change_complexity,
     score_customer_visibility,
@@ -519,3 +523,90 @@ class TestReportLayout:
                 assert "InfoSec" in line
                 return
         pytest.fail("Security Exposure row not found")
+
+
+# ── Revision History Tests ──────────────────────────────────────────
+
+class TestRevisionHistory:
+    def test_load_no_history_returns_empty(self, tmp_path):
+        result = load_revision_history(str(tmp_path), "CR-NONEXISTENT")
+        assert result == []
+
+    def test_save_creates_per_change_folder(self, tmp_path):
+        record = {"change_id": "CR-X", "revision": 1, "score": 2.5}
+        path = save_revision_record(str(tmp_path), "CR-X", record)
+        assert path.exists()
+        assert path.parent.name == "CR-X"
+        assert path.name == "rev-1.json"
+
+    def test_save_then_load_round_trip(self, tmp_path):
+        rec1 = {"change_id": "CR-Y", "revision": 1, "score": 3.0, "level": "MEDIUM"}
+        rec2 = {"change_id": "CR-Y", "revision": 2, "score": 2.0, "level": "LOW"}
+        save_revision_record(str(tmp_path), "CR-Y", rec1)
+        save_revision_record(str(tmp_path), "CR-Y", rec2)
+        history = load_revision_history(str(tmp_path), "CR-Y")
+        assert len(history) == 2
+        assert history[0]["revision"] == 1
+        assert history[1]["revision"] == 2
+
+    def test_save_is_idempotent_for_same_revision(self, tmp_path):
+        rec = {"change_id": "CR-Z", "revision": 1, "score": 3.0}
+        save_revision_record(str(tmp_path), "CR-Z", rec)
+        rec["score"] = 2.5  # rerun with updated score
+        save_revision_record(str(tmp_path), "CR-Z", rec)
+        history = load_revision_history(str(tmp_path), "CR-Z")
+        assert len(history) == 1
+        assert history[0]["score"] == 2.5
+
+    def test_build_revision_record_captures_decision(self):
+        cr = {"id": "CR-A", "revision": 1}
+        record = build_revision_record(
+            cr, 3.28, "HIGH", "**GO (conditional)** — proceed.", ["Mit 1"]
+        )
+        assert record["change_id"] == "CR-A"
+        assert record["revision"] == 1
+        assert record["decision"] == "GO_CONDITIONAL"
+        assert record["score"] == 3.28
+        assert "timestamp" in record
+
+    def test_build_revision_record_includes_addressed_mitigations(self):
+        cr = {"id": "CR-A", "revision": 2, "addressed_mitigations": [1, 2, 3]}
+        record = build_revision_record(cr, 2.0, "LOW", "**GO** —", [])
+        assert record["addressed_mitigations"] == [1, 2, 3]
+
+    def test_render_history_returns_empty_with_no_prior(self):
+        out = render_revision_history([], current_rev=1, current_addressed=[])
+        assert out == ""
+
+    def test_render_history_lists_prior_revisions(self):
+        history = [
+            {"revision": 1, "timestamp": "2026-04-09T10:00:00", "score": 3.28,
+             "level": "HIGH", "decision": "GO_CONDITIONAL", "mitigations": ["A", "B"]},
+        ]
+        out = render_revision_history(history, current_rev=2, current_addressed=[1, 2])
+        assert "rev 1" in out
+        assert "3.28" in out
+        assert "HIGH" in out
+
+    def test_render_history_marks_addressed_mitigations(self):
+        history = [
+            {"revision": 1, "timestamp": "2026-04-09T10:00:00", "score": 3.28,
+             "level": "HIGH", "decision": "GO_CONDITIONAL",
+             "mitigations": ["First mit", "Second mit", "Third mit"]},
+        ]
+        out = render_revision_history(history, current_rev=2, current_addressed=[1, 3])
+        assert "✅ 1. First mit" in out
+        assert "⬜ 2. Second mit" in out
+        assert "✅ 3. Third mit" in out
+
+    def test_render_history_excludes_current_revision(self):
+        history = [
+            {"revision": 1, "timestamp": "2026-04-09T10:00:00", "score": 3.28,
+             "level": "HIGH", "decision": "GO_CONDITIONAL", "mitigations": []},
+            {"revision": 2, "timestamp": "2026-04-10T15:30:00", "score": 2.0,
+             "level": "LOW", "decision": "GO", "mitigations": []},
+        ]
+        out = render_revision_history(history, current_rev=2, current_addressed=[])
+        # rev 2 (current) should NOT appear in the prior table
+        assert "2026-04-09" in out
+        assert "2026-04-10" not in out

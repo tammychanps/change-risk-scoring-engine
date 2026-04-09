@@ -21,7 +21,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # ── Allow imports from ../common/ ─────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -527,6 +527,106 @@ def decision_key(recommendation: str) -> str:
 
 
 # =====================================================================
+#  Revision History (per-change audit trail)
+# =====================================================================
+
+def revision_dir(history_root: str, change_id: str) -> Path:
+    """Return the per-change folder under the history root."""
+    return Path(history_root) / change_id
+
+
+def load_revision_history(history_root: str, change_id: str) -> List[dict]:
+    """
+    Load all prior revision records for a change ID, sorted by revision.
+
+    Returns [] if the change has no prior revisions.
+    """
+    folder = revision_dir(history_root, change_id)
+    if not folder.exists():
+        return []
+    records = []
+    for filepath in sorted(folder.glob("rev-*.json")):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                records.append(json.load(f))
+        except (json.JSONDecodeError, OSError):
+            continue
+    records.sort(key=lambda r: r.get("revision", 0))
+    return records
+
+
+def save_revision_record(history_root: str, change_id: str, record: dict) -> Path:
+    """
+    Persist a single revision record to {history_root}/{change_id}/rev-{n}.json.
+
+    Creates the folder if needed. Overwrites if the same revision number
+    is rerun (idempotent within a revision).
+    """
+    folder = revision_dir(history_root, change_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    rev_num = record.get("revision", 1)
+    filepath = folder / f"rev-{rev_num}.json"
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2)
+    return filepath
+
+
+def build_revision_record(cr: dict, weighted_avg: float, risk_level: str,
+                          recommendation: str, mitigations: List[str]) -> dict:
+    """Capture the assessment outcome for a single revision."""
+    return {
+        "change_id": cr.get("id"),
+        "revision": cr.get("revision", 1),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "score": weighted_avg,
+        "level": risk_level,
+        "recommendation": recommendation,
+        "decision": decision_key(recommendation),
+        "mitigations": mitigations,
+        "addressed_mitigations": cr.get("addressed_mitigations", []),
+    }
+
+
+def render_revision_history(history: List[dict], current_rev: int,
+                            current_addressed: List[int]) -> str:
+    """
+    Render a markdown section showing prior revisions and which mitigations
+    from the most recent prior revision were marked addressed in this run.
+    """
+    prior = [r for r in history if r.get("revision", 0) < current_rev]
+    if not prior:
+        return ""
+
+    headers = ["Rev", "Timestamp", "Score", "Level", "Decision"]
+    rows = []
+    for rec in prior:
+        rows.append([
+            f"rev {rec.get('revision')}",
+            rec.get("timestamp", "N/A")[:19].replace("T", " "),
+            f"{rec.get('score', 'N/A')}/5.0",
+            rec.get("level", "N/A"),
+            rec.get("decision", "N/A").replace("_", " "),
+        ])
+    table_md = rpt.table(headers, rows)
+
+    # Diff against the most recent prior revision
+    latest_prior = prior[-1]
+    prior_mits = latest_prior.get("mitigations", [])
+    diff_lines = []
+    if prior_mits and current_addressed:
+        diff_lines.append(f"\n**Mitigations addressed since rev {latest_prior['revision']}:**\n")
+        for i, mit in enumerate(prior_mits, start=1):
+            mark = "✅" if i in current_addressed else "⬜"
+            diff_lines.append(f"- {mark} {i}. {mit}")
+    elif prior_mits:
+        diff_lines.append(
+            f"\n*No mitigations from rev {latest_prior['revision']} marked as addressed yet.*"
+        )
+
+    return table_md + "\n" + "\n".join(diff_lines)
+
+
+# =====================================================================
 #  High Score Justification (deterministic, rule-based)
 # =====================================================================
 
@@ -626,7 +726,8 @@ def _build_overview_table(cr: dict) -> str:
 
 def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                  risk_level: str, similar: List[dict], narrative: str,
-                 mitigations: List[str], config: dict) -> str:
+                 mitigations: List[str], config: dict,
+                 prior_revisions: Optional[List[dict]] = None) -> str:
     """Assemble the full Markdown risk report.
 
     Section order is decision-first:
@@ -634,9 +735,10 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
       2. Risk Narrative  (LLM-written)
       3. Go / No-Go Recommendation  (color-coded)
       4. Required Mitigations
-      5. Risk Assessment  (score + inline gauge)
-      6. Dimension Breakdown  (with Why High justifications)
-      7. Similar Past Changes
+      5. Revision History  (only if prior revisions exist)
+      6. Risk Assessment  (score + inline gauge)
+      7. Dimension Breakdown  (with Why High justifications)
+      8. Similar Past Changes
     """
     parts = []
 
@@ -665,7 +767,17 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
         mit_text = "\n".join(f"{i+1}. {m}" for i, m in enumerate(mitigations))
         parts.append(rpt.section("Required Mitigations", mit_text))
 
-    # 5. Risk Assessment (score + inline gauge)
+    # 5. Revision History (only if prior revisions exist)
+    if prior_revisions:
+        history_md = render_revision_history(
+            prior_revisions,
+            current_rev=cr.get("revision", 1),
+            current_addressed=cr.get("addressed_mitigations", []),
+        )
+        if history_md:
+            parts.append(rpt.section("Revision History", history_md))
+
+    # 6. Risk Assessment (score + inline gauge)
     gauge = rpt.score_gauge(weighted_avg, risk_level)
     parts.append(rpt.section("Risk Assessment", gauge))
 
@@ -795,10 +907,25 @@ def main():
     # Generate mitigations
     mitigations = generate_mitigations(cr, dim_results, risk_level)
 
+    # Load prior revision history (if any) and persist this revision
+    prior_revisions = []
+    rev_cfg = config.get("revisions", {})
+    if rev_cfg.get("enabled", True):
+        history_root = SCRIPT_DIR / rev_cfg.get("history_dir", "change-revisions")
+        prior_revisions = load_revision_history(str(history_root), cr.get("id", ""))
+        if prior_revisions:
+            print(f"  Found {len(prior_revisions)} prior revision(s) in history")
+        recommendation_str = go_nogo(risk_level, dim_results)
+        record = build_revision_record(cr, weighted_avg, risk_level,
+                                       recommendation_str, mitigations)
+        save_path = save_revision_record(str(history_root), cr.get("id", ""), record)
+        print(f"  Saved revision record: {save_path.name}")
+
     # Build and save report
     print("\n  Assembling report...")
     report = build_report(cr, dim_results, weighted_avg, risk_level,
-                          similar, narrative, mitigations, config)
+                          similar, narrative, mitigations, config,
+                          prior_revisions=prior_revisions)
     rpt.save_report(args.output, report)
 
     print(f"\n  Risk Level: {risk_level} ({weighted_avg}/5.0)")

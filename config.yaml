@@ -72,3 +72,12 @@ report:
   similar_changes_count: 3          # top-N past changes to display
   include_narrative: true
   include_mitigations: true
+
+# ─── Revision History ────────────────────────────────────────────────
+# Each change request keeps a per-revision audit trail in
+# {history_dir}/{change_id}/rev-{n}.json. New revisions are appended
+# automatically; the report shows all prior revisions in a history table.
+
+revisions:
+  history_dir: "change-revisions"
+  enabled: true

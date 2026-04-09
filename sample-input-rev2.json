@@ -1,0 +1,21 @@
+{
+  "id": "CR-2026-0042",
+  "revision": 2,
+  "title": "Migrate Payment Gateway to AWS EKS",
+  "description": "Move payment processing from EC2 to EKS for better auto-scaling and container orchestration. Revision 2 incorporates all CAB-required mitigations from the rev 1 review: staging dry-run completed, InfoSec sign-off received, customer comms templates approved, war room scheduled, enhanced monitoring pre-staged.",
+  "change_type": "infrastructure",
+  "systems_affected": ["payment-gateway", "transaction-service", "fraud-detection"],
+  "deployment_window": "Saturday 02:00-06:00 PST",
+  "rollback_plan": "Revert DNS to previous EC2 instances, estimated 8 minutes (improved from 15 min after dry-run). Rollback procedure executed successfully twice in staging on 2026-04-10 and 2026-04-11.",
+  "rollback_tested": true,
+  "team_experience_similar": 4,
+  "recent_incidents_30d": 0,
+  "security_impact": true,
+  "customer_facing": true,
+  "requester": "Jane Smith",
+  "requesting_team": "Payments Engineering",
+  "implementation_team": "Platform SRE",
+  "implementation_plan_url": "https://confluence.example.com/display/PAY/CR-2026-0042-runbook-v2",
+  "cab_date": "2026-04-12",
+  "addressed_mitigations": [1, 2, 3, 4, 5]
+}
