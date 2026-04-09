@@ -1,5 +1,6 @@
 {
   "id": "CR-2026-0042",
+  "revision": 1,
   "title": "Migrate Payment Gateway to AWS EKS",
   "description": "Move payment processing from EC2 to EKS for better auto-scaling and container orchestration",
   "change_type": "infrastructure",
@@ -10,5 +11,10 @@
   "team_experience_similar": 3,
   "recent_incidents_30d": 1,
   "security_impact": true,
-  "customer_facing": true
+  "customer_facing": true,
+  "requester": "Jane Smith",
+  "requesting_team": "Payments Engineering",
+  "implementation_team": "Platform SRE",
+  "implementation_plan_url": "https://confluence.example.com/display/PAY/CR-2026-0042-runbook",
+  "cab_date": "2026-04-12"
 }

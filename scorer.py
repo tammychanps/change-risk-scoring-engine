@@ -509,14 +509,135 @@ def go_nogo(risk_level: str, dim_results: dict) -> str:
         )
 
 
+def decision_key(recommendation: str) -> str:
+    """
+    Extract the machine-readable decision key from a recommendation string.
+
+    Returns one of: GO, GO_CONDITIONAL, NO_GO
+    Used to render the color-coded badge.
+    """
+    rec_upper = recommendation.upper()
+    if "NO-GO" in rec_upper or "NO_GO" in rec_upper:
+        return "NO_GO"
+    if "CONDITIONAL" in rec_upper:
+        return "GO_CONDITIONAL"
+    if "GO" in rec_upper:
+        return "GO"
+    return "GO_CONDITIONAL"
+
+
+# =====================================================================
+#  High Score Justification (deterministic, rule-based)
+# =====================================================================
+
+def explain_high_score(dim_key: str, cr: dict, score: int) -> str:
+    """
+    Return a short, rule-based justification for a dimension score >= 4.
+
+    Justifications are deterministic — they reference the input data
+    directly. This keeps the audit trail explainable without depending
+    on the LLM (which is reserved for the narrative layer).
+
+    Returns "" for scores < 4 so callers can keep low-risk rows clean.
+    """
+    if score < 4:
+        return ""
+
+    n_systems = len(cr.get("systems_affected", []))
+    systems = cr.get("systems_affected", [])
+    change_type = cr.get("change_type", "unknown")
+
+    explanations = {
+        "scope_impact": (
+            f"{n_systems} systems affected — wide blast radius across "
+            f"{', '.join(systems[:3])}{'...' if n_systems > 3 else ''}"
+        ),
+        "change_complexity": (
+            f"{change_type.title()} change touching {n_systems} system(s) — "
+            f"high coordination and execution complexity"
+        ),
+        "security_exposure": (
+            "Touches authentication, encryption, PII, or payment data "
+            "(security_impact=true) — InfoSec review required"
+        ),
+        "customer_visibility": (
+            "Customer-facing systems affected — failure would be visible "
+            "to end users immediately"
+        ),
+        "rollback_readiness": (
+            "Rollback plan missing or untested — recovery path unverified "
+            "before go-live"
+        ),
+        "deployment_window": (
+            f"Window '{cr.get('deployment_window', 'N/A')}' overlaps peak "
+            f"traffic — elevated customer impact risk"
+        ),
+        "team_experience": (
+            f"Team has completed only {cr.get('team_experience_similar', 0)} "
+            f"similar change(s) — limited execution muscle memory"
+        ),
+        "recent_stability": (
+            f"{cr.get('recent_incidents_30d', 0)} incidents on affected "
+            f"systems in the last 30 days — fragile baseline"
+        ),
+    }
+    return explanations.get(dim_key, f"Score {score}/5 — review required")
+
+
 # =====================================================================
 #  Report Assembly
 # =====================================================================
 
+def _build_overview_table(cr: dict) -> str:
+    """
+    Render a two-column Change Request Overview table.
+
+    Left block holds metadata (who/what); right block holds operational
+    details (when/how/where). An empty middle column acts as a visual
+    gutter so the two halves read as side-by-side.
+    """
+    rev = cr.get("revision", 1)
+    plan_url = cr.get("implementation_plan_url", "")
+    plan_cell = f"[View Runbook]({plan_url})" if plan_url else "N/A"
+
+    left = [
+        ("Change ID", f"{cr.get('id', 'N/A')} (rev {rev})"),
+        ("Title", cr.get("title", "N/A")),
+        ("Type", cr.get("change_type", "N/A")),
+        ("Requester", cr.get("requester", "N/A")),
+        ("Requesting Team", cr.get("requesting_team", "N/A")),
+        ("Implementation Team", cr.get("implementation_team", "N/A")),
+    ]
+    right = [
+        ("Systems Affected", ", ".join(cr.get("systems_affected", ["N/A"]))),
+        ("Deployment Window", cr.get("deployment_window", "N/A")),
+        ("CAB Date", cr.get("cab_date", "N/A")),
+        ("Implementation Plan", plan_cell),
+        ("Rollback Plan", cr.get("rollback_plan", "N/A")),
+        ("Rollback Tested", "Yes" if cr.get("rollback_tested") else "No"),
+    ]
+
+    lines = ["| Field | Value |  | Field | Value |",
+             "| --- | --- | --- | --- | --- |"]
+    for (lk, lv), (rk, rv) in zip(left, right):
+        lines.append(f"| **{lk}** | {lv} |  | **{rk}** | {rv} |")
+    return "\n".join(lines)
+
+
 def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                  risk_level: str, similar: List[dict], narrative: str,
                  mitigations: List[str], config: dict) -> str:
-    """Assemble the full Markdown risk report."""
+    """Assemble the full Markdown risk report.
+
+    Section order is decision-first:
+      1. Change Request Overview
+      2. Risk Narrative  (LLM-written)
+      3. Go / No-Go Recommendation  (color-coded)
+      4. Required Mitigations
+      5. Risk Assessment  (score + inline gauge)
+      6. Dimension Breakdown  (with Why High justifications)
+      7. Similar Past Changes
+    """
     parts = []
 
     # Header
@@ -525,40 +646,46 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
         config.get("report", {}).get("subtitle", "CAB Review Document"),
     ))
 
-    # Change overview
-    overview = (
-        f"| Field | Value |\n"
-        f"| --- | --- |\n"
-        f"| **Change ID** | {cr.get('id', 'N/A')} |\n"
-        f"| **Title** | {cr.get('title', 'N/A')} |\n"
-        f"| **Type** | {cr.get('change_type', 'N/A')} |\n"
-        f"| **Systems Affected** | {', '.join(cr.get('systems_affected', ['N/A']))} |\n"
-        f"| **Deployment Window** | {cr.get('deployment_window', 'N/A')} |\n"
-        f"| **Rollback Plan** | {cr.get('rollback_plan', 'N/A')} |\n"
-        f"| **Rollback Tested** | {'Yes' if cr.get('rollback_tested') else 'No'} |"
-    )
-    parts.append(rpt.section("Change Request Overview", overview))
+    # 1. Change Request Overview (two-column)
+    parts.append(rpt.section("Change Request Overview", _build_overview_table(cr)))
 
-    # Overall score + badge
-    badge = rpt.risk_badge(risk_level)
-    overall = f"**Overall Risk Score: {weighted_avg} / 5.0** {badge}"
-    parts.append(rpt.section("Risk Assessment", overall))
+    # 2. Risk Narrative (moved up)
+    parts.append(rpt.section("Risk Narrative", narrative))
 
-    # Dimension breakdown table
-    dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted"]
+    # 3. Go / No-Go Recommendation (color-coded callout)
+    recommendation = go_nogo(risk_level, dim_results)
+    badge = rpt.decision_badge(decision_key(recommendation))
+    # Strip the leading bold marker from recommendation since the badge replaces it
+    rec_text = recommendation.split("** — ", 1)[-1] if "** — " in recommendation else recommendation
+    callout = f"> {badge} — {rec_text}"
+    parts.append(rpt.section("Go / No-Go Recommendation", callout))
+
+    # 4. Required Mitigations
+    if mitigations:
+        mit_text = "\n".join(f"{i+1}. {m}" for i, m in enumerate(mitigations))
+        parts.append(rpt.section("Required Mitigations", mit_text))
+
+    # 5. Risk Assessment (score + inline gauge)
+    gauge = rpt.score_gauge(weighted_avg, risk_level)
+    parts.append(rpt.section("Risk Assessment", gauge))
+
+    # 6. Dimension breakdown with "Why High" justification column
+    dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted", "Why High"]
     dim_rows = []
     for dim_key, info in dim_results.items():
         weighted_val = info["score"] * info["weight"]
         score_bar = "█" * info["score"] + "░" * (5 - info["score"])
+        why = explain_high_score(dim_key, cr, info["score"])
         dim_rows.append([
             info["label"],
             f"{score_bar} {info['score']}",
             str(info["weight"]),
             str(weighted_val),
+            why or "—",
         ])
     parts.append(rpt.subsection("Dimension Breakdown", rpt.table(dim_headers, dim_rows)))
 
-    # Similar past changes
+    # 7. Similar past changes
     if similar:
         sim_headers = ["Change ID", "Title", "Type", "Risk Score", "Outcome", "Date"]
         sim_rows = []
@@ -579,23 +706,10 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                 s.get("date", "N/A"),
             ])
         sim_content = rpt.table(sim_headers, sim_rows)
-        # Add outcome notes
         sim_content += "\n\n**Outcome Details:**\n"
         for s in similar:
             sim_content += f"- **{s.get('id')}**: {s.get('outcome_notes', 'N/A')}\n"
         parts.append(rpt.section("Similar Past Changes (Top 3)", sim_content))
-
-    # Risk narrative
-    parts.append(rpt.section("Risk Narrative", narrative))
-
-    # Go/No-Go
-    recommendation = go_nogo(risk_level, dim_results)
-    parts.append(rpt.section("Go / No-Go Recommendation", recommendation))
-
-    # Mitigations
-    if mitigations:
-        mit_text = "\n".join(f"{i+1}. {m}" for i, m in enumerate(mitigations))
-        parts.append(rpt.section("Required Mitigations", mit_text))
 
     # Footer
     parts.append("\n---\n")

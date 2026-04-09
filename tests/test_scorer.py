@@ -17,7 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scorer import (
     DIMENSION_SCORERS,
+    _build_overview_table,
+    build_report,
     classify_risk,
+    decision_key,
+    explain_high_score,
     generate_mitigations,
     go_nogo,
     score_change,
@@ -354,3 +358,164 @@ class TestGoNoGo:
         dim_results = {k: {"label": k, "score": 5, "weight": 1} for k in DIMENSION_SCORERS}
         result = go_nogo("CRITICAL", dim_results)
         assert "NO-GO" in result
+
+
+# ── Decision Key Tests ──────────────────────────────────────────────
+
+class TestDecisionKey:
+    def test_go_string(self):
+        assert decision_key("**GO** — Low risk.") == "GO"
+
+    def test_go_conditional_string(self):
+        assert decision_key("**GO (conditional)** — Proceed.") == "GO_CONDITIONAL"
+
+    def test_no_go_string(self):
+        assert decision_key("**NO-GO** — Critical.") == "NO_GO"
+
+    def test_no_go_pending_mitigations(self):
+        assert decision_key("**NO-GO (pending mitigations)** —") == "NO_GO"
+
+
+# ── Explain High Score Tests (rule-based justification) ─────────────
+
+class TestExplainHighScore:
+    def test_no_explanation_below_4(self):
+        cr = {"systems_affected": ["a"]}
+        assert explain_high_score("scope_impact", cr, 3) == ""
+
+    def test_no_explanation_for_score_1(self):
+        assert explain_high_score("security_exposure", {}, 1) == ""
+
+    def test_security_high_mentions_infosec(self):
+        cr = {"security_impact": True}
+        out = explain_high_score("security_exposure", cr, 5)
+        assert "InfoSec" in out
+
+    def test_complexity_high_mentions_change_type(self):
+        cr = {"change_type": "infrastructure", "systems_affected": ["a", "b"]}
+        out = explain_high_score("change_complexity", cr, 4)
+        assert "Infrastructure" in out
+        assert "2 system" in out
+
+    def test_customer_visibility_mentions_end_users(self):
+        out = explain_high_score("customer_visibility", {}, 4)
+        assert "end users" in out.lower()
+
+    def test_scope_impact_lists_systems(self):
+        cr = {"systems_affected": ["a", "b", "c", "d"]}
+        out = explain_high_score("scope_impact", cr, 5)
+        assert "4 systems" in out
+        assert "..." in out  # truncates after 3
+
+    def test_recent_stability_includes_count(self):
+        cr = {"recent_incidents_30d": 7}
+        out = explain_high_score("recent_stability", cr, 4)
+        assert "7 incidents" in out
+
+    def test_unknown_dimension_falls_through(self):
+        out = explain_high_score("unknown_dim", {}, 5)
+        assert "5/5" in out
+
+
+# ── Overview Table Tests ─────────────────────────────────────────────
+
+class TestOverviewTable:
+    def test_includes_new_metadata_fields(self, sample_cr):
+        out = _build_overview_table(sample_cr)
+        assert "Requester" in out
+        assert "Requesting Team" in out
+        assert "Implementation Team" in out
+        assert "CAB Date" in out
+        assert "Implementation Plan" in out
+
+    def test_renders_implementation_plan_as_link(self, sample_cr):
+        out = _build_overview_table(sample_cr)
+        assert "[View Runbook]" in out
+        assert "https://" in out
+
+    def test_revision_appears_in_change_id_cell(self, sample_cr):
+        out = _build_overview_table(sample_cr)
+        assert "rev 1" in out
+
+    def test_two_column_layout_has_5_pipes_per_row(self, sample_cr):
+        out = _build_overview_table(sample_cr)
+        # Two-column structure: | Field | Value |  | Field | Value |
+        # Each data row should have 6 pipe characters (5 separators + outer)
+        data_lines = [l for l in out.split("\n") if l.startswith("| **")]
+        assert all(line.count("|") == 6 for line in data_lines)
+
+    def test_handles_missing_optional_fields(self):
+        cr = {"id": "CR-X", "title": "X"}
+        out = _build_overview_table(cr)
+        assert "N/A" in out  # falls back gracefully
+
+
+# ── Report Layout Tests ─────────────────────────────────────────────
+
+class TestReportLayout:
+    def _build(self, sample_cr):
+        config = {"thresholds": {"LOW": 2.0, "MEDIUM": 3.0, "HIGH": 4.0},
+                  "report": {"include_narrative": True, "include_mitigations": True}}
+        # Synthesize minimal dim_results
+        dim_results = {
+            "scope_impact": {"label": "Scope / Blast Radius", "score": 3, "weight": 3},
+            "change_complexity": {"label": "Change Complexity", "score": 4, "weight": 3},
+            "security_exposure": {"label": "Security Exposure", "score": 5, "weight": 3},
+            "customer_visibility": {"label": "Customer Visibility", "score": 4, "weight": 2},
+            "rollback_readiness": {"label": "Rollback Readiness", "score": 1, "weight": 2},
+            "deployment_window": {"label": "Deployment Window", "score": 1, "weight": 1},
+            "team_experience": {"label": "Team Experience", "score": 3, "weight": 2},
+            "recent_stability": {"label": "Recent Stability", "score": 3, "weight": 2},
+        }
+        return build_report(
+            sample_cr, dim_results, 3.28, "HIGH", [],
+            "AI-written narrative goes here.",
+            ["Mitigation 1", "Mitigation 2"], config,
+        )
+
+    def test_narrative_appears_before_dimension_breakdown(self, sample_cr):
+        report = self._build(sample_cr)
+        narr_pos = report.index("Risk Narrative")
+        dim_pos = report.index("Dimension Breakdown")
+        assert narr_pos < dim_pos
+
+    def test_recommendation_appears_before_risk_assessment(self, sample_cr):
+        report = self._build(sample_cr)
+        rec_pos = report.index("## Go / No-Go Recommendation")
+        risk_pos = report.index("## Risk Assessment")
+        assert rec_pos < risk_pos
+
+    def test_mitigations_appear_before_risk_assessment(self, sample_cr):
+        report = self._build(sample_cr)
+        mit_pos = report.index("## Required Mitigations")
+        risk_pos = report.index("## Risk Assessment")
+        assert mit_pos < risk_pos
+
+    def test_recommendation_uses_color_badge(self, sample_cr):
+        report = self._build(sample_cr)
+        # HIGH risk with no critical-scoring dims -> conditional GO -> yellow
+        # But this fixture has score 5 in security_exposure -> NO-GO -> red
+        assert "🔴" in report or "🟡" in report or "🟢" in report
+
+    def test_dimension_table_includes_why_high_column(self, sample_cr):
+        report = self._build(sample_cr)
+        assert "Why High" in report
+
+    def test_low_score_rows_show_dash_in_why_high(self, sample_cr):
+        report = self._build(sample_cr)
+        # Rollback Readiness scores 1, should show "—" in Why High
+        # Find that row in the dimension table
+        for line in report.split("\n"):
+            if "Rollback Readiness" in line and "|" in line:
+                assert line.rstrip().endswith("— |")
+                return
+        pytest.fail("Rollback Readiness row not found")
+
+    def test_high_score_row_shows_explanation(self, sample_cr):
+        report = self._build(sample_cr)
+        # security_exposure scores 5 -> should mention InfoSec
+        for line in report.split("\n"):
+            if "Security Exposure" in line and "|" in line:
+                assert "InfoSec" in line
+                return
+        pytest.fail("Security Exposure row not found")
