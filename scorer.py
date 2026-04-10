@@ -997,7 +997,7 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
     )
     if show_residual:
         dim_headers = ["Dimension", "Inherent", "Weight", "Weighted",
-                       "Residual", "Why High"]
+                       "Why High", "Residual"]
     else:
         dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted", "Why High"]
     dim_rows = []
@@ -1016,8 +1016,8 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                 f"{score_bar} {info['score']}",
                 str(info["weight"]),
                 str(weighted_val),
-                residual_cell,
                 why or "—",
+                residual_cell,
             ])
         else:
             dim_rows.append([

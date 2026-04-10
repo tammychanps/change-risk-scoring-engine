@@ -21,11 +21,19 @@
 
 **Risk Narrative for Change Request CR-2026-0042**
 
-The proposed change, Migrate Payment Gateway to AWS EKS, presents a moderate level of risk due to its complexity and potential security exposure. The migration aims to improve auto-scaling and container orchestration by moving payment processing from EC2 to EKS. While the CAB has reviewed and approved revisions 1 and 2, incorporating mitigations such as staging dry-run completion, InfoSec sign-off, customer comms templates approval, war room scheduling, and enhanced monitoring pre-staging, there are still risks associated with this change.
+The proposed change, Migrate Payment Gateway to AWS EKS, poses a moderate level of risk to the organization. The primary concerns revolve around the complexity and potential impact on payment processing systems. With a scope/blast radius score of 3/5, there is a moderate likelihood that the change could affect multiple components within the payment gateway system.
 
-The risk score of 2.89/5.0 (MEDIUM) reflects the potential for security exposure (4/5), high change complexity (4/5), and moderate scope/blast radius (3/5). The recent stability of the payment gateway system is a concern, scoring only 1/5, indicating that there may be underlying issues that could impact the success of this migration. Additionally, while the team has experience with similar past changes, such as migrating to AWS EC2 and deploying new fraud detection models, there are still risks associated with the deployment window (Saturday 02:00-06:00 PST) and potential for rollbacks.
+The high security exposure score of 4/5 highlights the importance of ensuring that the migration to EKS does not compromise the security and integrity of sensitive customer data. The recent stability score of 1/5 also raises concerns, as it suggests that the team may be less familiar with the new technology stack, potentially leading to unforeseen issues during deployment.
 
-To mitigate these risks, it is essential to closely monitor the migration process, including real-time logging and alerting. The war room scheduled for this change will provide a centralized location for issue resolution and decision-making in case of any unexpected events. Regular communication with stakeholders and customers will also be crucial to ensure minimal disruption to services. By carefully executing this change and being prepared for potential rollbacks, the risk associated with CR-2026-0042 can be minimized.
+The risk narrative is further supported by a review of similar past changes. While some have been successful, others have resulted in significant downtime or performance issues. For instance, the migration to AWS EC2 experienced a rollback due to a TLS certificate chain issue, highlighting the potential for unforeseen complications. Conversely, the canary deployment of the new fraud detection ML model v2.4 was successful, but this was a more controlled and gradual rollout.
+
+**Recommendations**
+
+Given the moderate level of risk associated with this change request, it is essential that the CAB continues to monitor its progress closely. The team should remain vigilant in addressing any issues that arise during deployment and be prepared to execute the rollback procedure if necessary. Additionally, the success of this migration will depend on the effectiveness of the enhanced monitoring pre-staged and the war room scheduled for the deployment window.
+
+**Risk Mitigation**
+
+The CAB has already approved several mitigations to address potential risks, including a staging dry-run, InfoSec sign-off, customer comms templates, and an enhanced monitoring plan. These measures should help minimize the likelihood of unforeseen complications during the migration process.
 
 
 ## Go / No-Go Recommendation
@@ -60,23 +68,23 @@ To mitigate these risks, it is essential to closely monitor the migration proces
 
 ### Dimension Breakdown
 
-| Dimension | Inherent | Weight | Weighted | Residual | Why High |
+| Dimension | Inherent | Weight | Weighted | Why High | Residual |
 | --- | --- | --- | --- | --- | --- |
-| Scope / Blast Radius | ███░░ 3 | 3 | 9 | 3 | — |
-| Change Complexity | ████░ 4 | 3 | 12 | 4 → 2 ✅ | Infrastructure change touching 3 system(s) — high coordination and execution complexity |
-| Security Exposure | ████░ 4 | 3 | 12 | 4 → 1 ✅ | Touches authentication, encryption, PII, or payment data (security_impact=true) — InfoSec review required |
-| Customer Visibility | ████░ 4 | 2 | 8 | 4 → 2 ✅ | Customer-facing systems affected — failure would be visible to end users immediately |
-| Rollback Readiness | █░░░░ 1 | 2 | 2 | 1 | — |
-| Deployment Window | █░░░░ 1 | 1 | 1 | 1 | — |
-| Team Experience | ███░░ 3 | 2 | 6 | 3 → 2 ✅ | — |
-| Recent Stability | █░░░░ 1 | 2 | 2 | 1 | — |
+| Scope / Blast Radius | ███░░ 3 | 3 | 9 | — | 3 |
+| Change Complexity | ████░ 4 | 3 | 12 | Infrastructure change touching 3 system(s) — high coordination and execution complexity | 4 → 2 ✅ |
+| Security Exposure | ████░ 4 | 3 | 12 | Touches authentication, encryption, PII, or payment data (security_impact=true) — InfoSec review required | 4 → 1 ✅ |
+| Customer Visibility | ████░ 4 | 2 | 8 | Customer-facing systems affected — failure would be visible to end users immediately | 4 → 2 ✅ |
+| Rollback Readiness | █░░░░ 1 | 2 | 2 | — | 1 |
+| Deployment Window | █░░░░ 1 | 1 | 1 | — | 1 |
+| Team Experience | ███░░ 3 | 2 | 6 | — | 3 → 2 ✅ |
+| Recent Stability | █░░░░ 1 | 2 | 2 | — | 1 |
 
 
 ## Revision History
 
 | Rev | Timestamp | Inherent | Residual | Decision |
 | --- | --- | --- | --- | --- |
-| rev 1 | 2026-04-09 21:23:11 | 3.11/5.0 HIGH | 3.11/5.0 HIGH | GO CONDITIONAL |
+| rev 1 | 2026-04-09 21:45:47 | 3.11/5.0 HIGH | 3.11/5.0 HIGH | GO CONDITIONAL |
 *Inherent risk dropped 0.22 since rev 1 due to updated input data (e.g., resolved incidents, improved rollback, increased team experience). Residual risk reflects both this data improvement and addressed mitigations.*
 
 
