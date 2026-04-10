@@ -375,10 +375,31 @@ class TestGoNoGo:
         result = go_nogo("LOW", dim_results)
         assert "GO" in result
 
+    def test_medium_is_go(self):
+        dim_results = {k: {"label": k, "score": 2, "weight": 1} for k in DIMENSION_SCORERS}
+        result = go_nogo("MEDIUM", dim_results)
+        assert "GO" in result
+        assert "conditional" not in result.lower()
+
+    def test_high_is_go_conditional(self):
+        dim_results = {k: {"label": k, "score": 4, "weight": 1} for k in DIMENSION_SCORERS}
+        result = go_nogo("HIGH", dim_results)
+        assert "conditional" in result.lower()
+
     def test_critical_is_nogo(self):
         dim_results = {k: {"label": k, "score": 5, "weight": 1} for k in DIMENSION_SCORERS}
         result = go_nogo("CRITICAL", dim_results)
         assert "NO-GO" in result
+
+    def test_score_displayed_when_provided(self):
+        dim_results = {k: {"label": k, "score": 1, "weight": 1} for k in DIMENSION_SCORERS}
+        result = go_nogo("LOW", dim_results, score=1.72)
+        assert "1.72 / 5.0" in result
+
+    def test_score_omitted_when_not_provided(self):
+        dim_results = {k: {"label": k, "score": 1, "weight": 1} for k in DIMENSION_SCORERS}
+        result = go_nogo("LOW", dim_results)
+        assert "/ 5.0" not in result
 
 
 # ── Decision Key Tests ──────────────────────────────────────────────

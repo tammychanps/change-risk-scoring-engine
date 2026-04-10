@@ -21,16 +21,18 @@
 
 **Risk Narrative for Change Request CR-2026-0042**
 
-The proposed change, Migrate Payment Gateway to AWS EKS, poses a moderate to high level of risk due to its complexity and potential impact on critical systems. The migration involves moving payment processing from EC2 to EKS, which requires container orchestration and auto-scaling capabilities. This change has been assessed as having a high change complexity score (4/5) and security exposure score (4/5), indicating that it may introduce new vulnerabilities or compromise existing security controls.
+The proposed change, Migrate Payment Gateway to AWS EKS (CR-2026-0042), carries a high overall risk score of 3.11/5.0 due to several factors. The primary concerns revolve around the migration's complexity and potential security exposure.
 
-The risk is further exacerbated by the potential for system instability during the cutover process, particularly given the recent stability score of 3/5. The deployment window, scheduled for Saturday between 02:00-06:00 PST, also poses a challenge due to its timing and potential impact on customer visibility (4/5). Although the team has experience with similar changes in the past (e.g., migrating payment gateway from on-prem to AWS EC2), there is still a risk of unforeseen issues arising during the migration process.
+One significant risk is the change's scope and blast radius, rated at 3/5. As this change affects multiple systems (payment-gateway, transaction-service, fraud-detection), a failure could have far-reaching consequences, impacting customer transactions and potentially leading to financial losses. Additionally, the migration involves moving payment processing from EC2 to EKS, which introduces new complexities related to container orchestration and auto-scaling.
 
-To mitigate these risks, it is essential to ensure that thorough testing and validation are performed prior to the cutover. The rollback plan, which involves reverting DNS to previous EC2 instances within 15 minutes, should be thoroughly tested in staging to confirm its effectiveness. Additionally, close monitoring of system performance and security during the deployment window will be crucial to identifying any potential issues promptly and taking corrective action as needed.
+The security exposure is another critical concern, with a rating of 4/5. The change's potential impact on the payment gateway's security posture is substantial, given its sensitive nature. A successful rollback would require reverting DNS settings back to previous EC2 instances within a tight window (estimated 15 minutes), which could be challenging and may not be feasible in all scenarios. Furthermore, the team's experience with EKS and container orchestration is rated at 3/5, indicating some uncertainty about their ability to execute this change successfully.
 
 
 ## Go / No-Go Recommendation
 
-> 🟡 **GO (CONDITIONAL)** — High risk but manageable. Proceed only with all mitigations implemented and CAB approval.
+> 🟡 **GO (CONDITIONAL)** — High risk (3.11 / 5.0) but manageable. Proceed only with all mitigations implemented and CAB approval.
+
+*Decision bands: GO (≤ 3.0) · GO conditional (3.0 – 4.0) · NO-GO (> 4.0)*
 
 
 ## Required Mitigations
@@ -44,9 +46,9 @@ To mitigate these risks, it is essential to ensure that thorough testing and val
 
 ## Risk Assessment
 
-| Score | Level | Where it sits |
-| --- | --- | --- |
-| **3.11 / 5.0** | **HIGH** 🔴 | `LOW (≤2.0) │ MED (≤3.0) │ HIGH (≤4.0)▲ │ CRIT (>4.0)` |
+| Score | Level | Recommendation | Where it sits |
+| --- | --- | --- | --- |
+| **3.11 / 5.0** | **HIGH** 🔴 | GO (conditional) | `LOW (≤2.0) │ MED (≤3.0) │ HIGH (≤4.0)▲ │ CRIT (>4.0)` |
 
 
 ### Dimension Breakdown
@@ -61,6 +63,8 @@ To mitigate these risks, it is essential to ensure that thorough testing and val
 | Deployment Window | █░░░░ 1 | 1 | 1 | — |
 | Team Experience | ███░░ 3 | 2 | 6 | — |
 | Recent Stability | ███░░ 3 | 2 | 6 | — |
+| **Total** |  | **18** | **56** |  |
+| **Risk Score** |  |  | **56 ÷ 18 = 3.11** |  |
 
 
 ## Similar Past Changes (Top 3)

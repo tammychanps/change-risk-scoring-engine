@@ -115,8 +115,16 @@ def score_gauge(score: float, level: str, max_score: float = 5.0) -> str:
     gauge_str = " │ ".join(gauge_parts)
 
     badge = risk_badge(level)
-    rows = [[f"**{score} / {max_score}**", badge, f"`{gauge_str}`"]]
-    return table(["Score", "Level", "Where it sits"], rows)
+    # Map level to recommendation for the gauge table
+    rec_map = {
+        "LOW": "GO",
+        "MEDIUM": "GO",
+        "HIGH": "GO (conditional)",
+        "CRITICAL": "NO-GO",
+    }
+    rec = rec_map.get(level.upper(), "—")
+    rows = [[f"**{score} / {max_score}**", badge, rec, f"`{gauge_str}`"]]
+    return table(["Score", "Level", "Recommendation", "Where it sits"], rows)
 
 
 def decision_badge(decision: str) -> str:

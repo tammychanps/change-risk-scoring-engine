@@ -21,25 +21,19 @@
 
 **Risk Narrative for Change Request CR-2026-0042**
 
-The proposed change, Migrate Payment Gateway to AWS EKS, poses a moderate level of risk to the organization. The primary concerns revolve around the complexity and potential impact on payment processing systems. With a scope/blast radius score of 3/5, there is a moderate likelihood that the change could affect multiple components within the payment gateway system.
+The proposed change, Migrate Payment Gateway to AWS EKS, poses a moderate level of risk to the organization. The change involves migrating payment processing from EC2 to EKS, which introduces new complexities in terms of auto-scaling and container orchestration. According to the provided data, the change complexity is rated 4/5, indicating a higher degree of difficulty.
 
-The high security exposure score of 4/5 highlights the importance of ensuring that the migration to EKS does not compromise the security and integrity of sensitive customer data. The recent stability score of 1/5 also raises concerns, as it suggests that the team may be less familiar with the new technology stack, potentially leading to unforeseen issues during deployment.
+The potential risks associated with this change include security exposure (rated 4/5) due to the introduction of new infrastructure components, and customer visibility (rated 4/5) as any disruptions during the deployment window may impact customer transactions. Additionally, the recent stability rating is low at 1/5, indicating that the team has not had extensive experience with EKS deployments in the past. The overall risk score of 2.89/5.0 highlights the need for careful planning and execution to mitigate these risks.
 
-The risk narrative is further supported by a review of similar past changes. While some have been successful, others have resulted in significant downtime or performance issues. For instance, the migration to AWS EC2 experienced a rollback due to a TLS certificate chain issue, highlighting the potential for unforeseen complications. Conversely, the canary deployment of the new fraud detection ML model v2.4 was successful, but this was a more controlled and gradual rollout.
-
-**Recommendations**
-
-Given the moderate level of risk associated with this change request, it is essential that the CAB continues to monitor its progress closely. The team should remain vigilant in addressing any issues that arise during deployment and be prepared to execute the rollback procedure if necessary. Additionally, the success of this migration will depend on the effectiveness of the enhanced monitoring pre-staged and the war room scheduled for the deployment window.
-
-**Risk Mitigation**
-
-The CAB has already approved several mitigations to address potential risks, including a staging dry-run, InfoSec sign-off, customer comms templates, and an enhanced monitoring plan. These measures should help minimize the likelihood of unforeseen complications during the migration process.
+Notwithstanding the mitigations incorporated in Revision 2, such as staging dry-run completion, InfoSec sign-off, customer comms templates approval, war room scheduling, and enhanced monitoring pre-staging, there is still a risk of unforeseen issues arising during deployment. The rollback procedure has been successfully executed twice in staging, but this does not guarantee success in the production environment. Therefore, it is essential to closely monitor the change's progress and be prepared to revert to the previous EC2 instances if necessary.
 
 
 ## Go / No-Go Recommendation
 
-> 🟢 **GO** — Low risk. Proceed with standard change procedures.  
+> 🟢 **GO** — Low risk (1.72 / 5.0). Proceed with standard change procedures.  
 *Residual risk after 5/5 mitigations addressed.*
+
+*Decision bands: GO (≤ 3.0) · GO conditional (3.0 – 4.0) · NO-GO (> 4.0)*
 
 
 ## Required Mitigations
@@ -55,36 +49,38 @@ The CAB has already approved several mitigations to address potential risks, inc
 
 **Inherent Risk** (raw score, before mitigations)
 
-| Score | Level | Where it sits |
-| --- | --- | --- |
-| **2.89 / 5.0** | **MEDIUM** ⚠️ | `LOW (≤2.0) │ MED (≤3.0)▲ │ HIGH (≤4.0) │ CRIT (>4.0)` |
+| Score | Level | Recommendation | Where it sits |
+| --- | --- | --- | --- |
+| **2.89 / 5.0** | **MEDIUM** ⚠️ | GO | `LOW (≤2.0) │ MED (≤3.0)▲ │ HIGH (≤4.0) │ CRIT (>4.0)` |
 
 **Residual Risk** (after addressed mitigations — drives the recommendation)
 
-| Score | Level | Where it sits |
-| --- | --- | --- |
-| **1.72 / 5.0** | **LOW** ✅ | `LOW (≤2.0)▲ │ MED (≤3.0) │ HIGH (≤4.0) │ CRIT (>4.0)` |
+| Score | Level | Recommendation | Where it sits |
+| --- | --- | --- | --- |
+| **1.72 / 5.0** | **LOW** ✅ | GO | `LOW (≤2.0)▲ │ MED (≤3.0) │ HIGH (≤4.0) │ CRIT (>4.0)` |
 
 
 ### Dimension Breakdown
 
-| Dimension | Inherent | Weight | Weighted | Why High | Residual |
-| --- | --- | --- | --- | --- | --- |
-| Scope / Blast Radius | ███░░ 3 | 3 | 9 | — | 3 |
-| Change Complexity | ████░ 4 | 3 | 12 | Infrastructure change touching 3 system(s) — high coordination and execution complexity | 4 → 2 ✅ |
-| Security Exposure | ████░ 4 | 3 | 12 | Touches authentication, encryption, PII, or payment data (security_impact=true) — InfoSec review required | 4 → 1 ✅ |
-| Customer Visibility | ████░ 4 | 2 | 8 | Customer-facing systems affected — failure would be visible to end users immediately | 4 → 2 ✅ |
-| Rollback Readiness | █░░░░ 1 | 2 | 2 | — | 1 |
-| Deployment Window | █░░░░ 1 | 1 | 1 | — | 1 |
-| Team Experience | ███░░ 3 | 2 | 6 | — | 3 → 2 ✅ |
-| Recent Stability | █░░░░ 1 | 2 | 2 | — | 1 |
+| Dimension | Inherent | Weight | Weighted (Inherent) | Residual | Weighted (Residual) | Why High |
+| --- | --- | --- | --- | --- | --- | --- |
+| Scope / Blast Radius | ███░░ 3 | 3 | 9 | 3 | 9 | — |
+| Change Complexity | ████░ 4 | 3 | 12 | 4 → 2 ✅ | 6 | Infrastructure change touching 3 system(s) — high coordination and execution complexity |
+| Security Exposure | ████░ 4 | 3 | 12 | 4 → 1 ✅ | 3 | Touches authentication, encryption, PII, or payment data (security_impact=true) — InfoSec review required |
+| Customer Visibility | ████░ 4 | 2 | 8 | 4 → 2 ✅ | 4 | Customer-facing systems affected — failure would be visible to end users immediately |
+| Rollback Readiness | █░░░░ 1 | 2 | 2 | 1 | 2 | — |
+| Deployment Window | █░░░░ 1 | 1 | 1 | 1 | 1 | — |
+| Team Experience | ███░░ 3 | 2 | 6 | 3 → 2 ✅ | 4 | — |
+| Recent Stability | █░░░░ 1 | 2 | 2 | 1 | 2 | — |
+| **Total** |  | **18** | **52** |  | **31** |  |
+| **Risk Score** |  |  | **52 ÷ 18 = 2.89** |  | **31 ÷ 18 = 1.72** |  |
 
 
 ## Revision History
 
 | Rev | Timestamp | Inherent | Residual | Decision |
 | --- | --- | --- | --- | --- |
-| rev 1 | 2026-04-09 21:45:47 | 3.11/5.0 HIGH | 3.11/5.0 HIGH | GO CONDITIONAL |
+| rev 1 | 2026-04-09 22:10:00 | 3.11/5.0 HIGH | 3.11/5.0 HIGH | GO CONDITIONAL |
 *Inherent risk dropped 0.22 since rev 1 due to updated input data (e.g., resolved incidents, improved rollback, increased team experience). Residual risk reflects both this data improvement and addressed mitigations.*
 
 

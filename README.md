@@ -4,7 +4,11 @@
 
 ## TL;DR / Overview
 
-A Python tool that helps Change Advisory Boards make faster, more consistent Go/No-Go decisions on production change requests. It scores each change on 8 weighted risk dimensions, retrieves similar past changes via FAISS vector search (RAG), and generates a CAB-ready risk narrative using a local LLM (Ollama). Deterministic scoring stays auditable; the AI layer produces the explanation. Runs fully offline — no data leaves the machine — built for regulated financial services (PCI DSS, SOX, FFIEC). **125 pytest tests, Python 3.12.**
+**Goal:** Help Change Advisory Boards make faster, more consistent Go/No-Go decisions on production change requests.
+
+**How:** Scores each change on 8 weighted risk dimensions, retrieves similar past changes via FAISS vector search (RAG), and generates a CAB-ready risk narrative using a local LLM (Ollama). Deterministic scoring stays auditable; the AI layer produces the explanation. Models inherent vs. residual risk (ISO 31000) so mitigations are tracked and the Go/No-Go recommendation evolves across revisions.
+
+**Result:** Runs fully offline — no data leaves the machine. Built for regulated financial services (PCI DSS, SOX, FFIEC). A single tool replaces the manual, inconsistent process of scoring changes, cross-referencing past incidents, and writing risk narratives. **125 pytest tests, Python 3.12.**
 
 ## Why This Matters
 

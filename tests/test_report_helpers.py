@@ -51,6 +51,16 @@ class TestScoreGauge:
         assert "≤4.0" in out
         assert ">4.0" in out
 
+    def test_gauge_includes_recommendation_column(self):
+        """Gauge table must include a Recommendation column."""
+        out = score_gauge(1.5, "LOW")
+        assert "Recommendation" in out
+        assert "GO" in out
+
+    def test_gauge_recommendation_matches_level(self):
+        assert "GO (conditional)" in score_gauge(3.5, "HIGH")
+        assert "NO-GO" in score_gauge(4.5, "CRITICAL")
+
     def test_gauge_renders_as_markdown_table(self):
         out = score_gauge(3.28, "HIGH")
         # Markdown table has header separator

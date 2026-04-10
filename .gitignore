@@ -35,6 +35,9 @@ status-report.md
 # Revision history snapshots (auto-generated per run)
 change-revisions/
 
+# Session progress notes (kept locally for reference)
+progress-*.md
+
 # Ollama models
 *.gguf
 models/

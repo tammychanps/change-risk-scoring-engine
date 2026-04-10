@@ -599,26 +599,31 @@ def compute_residual(inherent_dim_results: Dict[str, dict],
 #  Go / No-Go Recommendation
 # =====================================================================
 
-def go_nogo(risk_level: str, dim_results: dict) -> str:
-    """Return a Go/No-Go recommendation with rationale.
+def go_nogo(risk_level: str, dim_results: dict,
+            score: Optional[float] = None) -> str:
+    """Return a Go/No-Go recommendation with rationale and score.
 
     Decision bands (simplified scheme):
       LOW    (≤ 2.0)  → GO
       MEDIUM (≤ 3.0)  → GO  (acceptable risk, proceed with awareness)
       HIGH   (≤ 4.0)  → GO (conditional)  (mitigations required before proceed)
       CRITICAL (> 4.0) → NO-GO  (defer or decompose)
+
+    When score is provided it is displayed inline so the reviewer sees
+    the number next to the decision without scrolling to the gauge.
     """
+    score_str = f" ({score} / 5.0)" if score is not None else ""
     if risk_level in ("LOW", "MEDIUM"):
-        return "**GO** — Low risk. Proceed with standard change procedures."
+        return f"**GO** — Low risk{score_str}. Proceed with standard change procedures."
     elif risk_level == "HIGH":
         return (
-            "**GO (conditional)** — High risk but manageable. "
+            f"**GO (conditional)** — High risk{score_str} but manageable. "
             "Proceed only with all mitigations implemented and CAB approval."
         )
     else:  # CRITICAL
         return (
-            "**NO-GO** — Critical risk level. Defer this change or decompose into smaller, "
-            "lower-risk changes. Requires VP-level exception approval to proceed."
+            f"**NO-GO** — Critical risk level{score_str}. Defer this change or decompose "
+            "into smaller, lower-risk changes. Requires VP-level exception approval to proceed."
         )
 
 
@@ -940,7 +945,9 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
     parts.append(rpt.section("Risk Narrative", narrative))
 
     # 3. Go / No-Go Recommendation — uses RESIDUAL decision (color-coded)
-    recommendation = go_nogo(residual_level, residual_dim_results)
+    # Show residual score if mitigations were addressed, else inherent score
+    display_score = residual_score if residual_score != weighted_avg else weighted_avg
+    recommendation = go_nogo(residual_level, residual_dim_results, score=display_score)
     addressed = cr.get("addressed_mitigations", [])
     # Use the prior revision's mitigation list for the "X of Y addressed"
     # count when this revision is tracking a prior commitment.
@@ -955,7 +962,9 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
     badge = rpt.decision_badge(decision_key(recommendation))
     rec_text = recommendation.split("** — ", 1)[-1] if "** — " in recommendation else recommendation
     callout = f"> {badge} — {rec_text}"
-    parts.append(rpt.section("Go / No-Go Recommendation", callout))
+    # 3b. Decision-band legend (inline, so the viewer knows the thresholds)
+    legend = "\n\n*Decision bands: GO (≤ 3.0) · GO conditional (3.0 – 4.0) · NO-GO (> 4.0)*"
+    parts.append(rpt.section("Go / No-Go Recommendation", callout + legend))
 
     # 4. Required Mitigations (with checkbox status + reduction tag)
     display_mits = prior_mitigations if prior_mitigations else mitigations
@@ -990,23 +999,29 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
         ra_content = inherent_gauge
     parts.append(rpt.section("Risk Assessment", ra_content))
 
-    # 6. Dimension breakdown with inherent + residual + Why High
+    # 6. Dimension breakdown with totals + explanation rows
     show_residual = residual_dim_results is not dim_results and any(
         residual_dim_results[k]["score"] != dim_results[k]["score"]
         for k in dim_results
     )
+    total_weight = sum(info["weight"] for info in dim_results.values())
     if show_residual:
-        dim_headers = ["Dimension", "Inherent", "Weight", "Weighted",
-                       "Why High", "Residual"]
+        dim_headers = ["Dimension", "Inherent", "Weight", "Weighted (Inherent)",
+                       "Residual", "Weighted (Residual)", "Why High"]
     else:
         dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted", "Why High"]
     dim_rows = []
+    inh_weighted_total = 0
+    res_weighted_total = 0
     for dim_key, info in dim_results.items():
         weighted_val = info["score"] * info["weight"]
+        inh_weighted_total += weighted_val
         score_bar = "█" * info["score"] + "░" * (5 - info["score"])
         why = explain_high_score(dim_key, cr, info["score"])
         if show_residual:
             r_score = residual_dim_results[dim_key]["score"]
+            r_weighted = r_score * info["weight"]
+            res_weighted_total += r_weighted
             if r_score < info["score"]:
                 residual_cell = f"{info['score']} → {r_score} ✅"
             else:
@@ -1016,8 +1031,9 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                 f"{score_bar} {info['score']}",
                 str(info["weight"]),
                 str(weighted_val),
-                why or "—",
                 residual_cell,
+                str(r_weighted),
+                why or "—",
             ])
         else:
             dim_rows.append([
@@ -1027,6 +1043,27 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                 str(weighted_val),
                 why or "—",
             ])
+    # Totals row
+    if show_residual:
+        dim_rows.append([
+            "**Total**", "", f"**{total_weight}**",
+            f"**{inh_weighted_total}**", "",
+            f"**{res_weighted_total}**", "",
+        ])
+        dim_rows.append([
+            "**Risk Score**", "", "",
+            f"**{inh_weighted_total} ÷ {total_weight} = {weighted_avg}**", "",
+            f"**{res_weighted_total} ÷ {total_weight} = {residual_score}**", "",
+        ])
+    else:
+        dim_rows.append([
+            "**Total**", "", f"**{total_weight}**",
+            f"**{inh_weighted_total}**", "",
+        ])
+        dim_rows.append([
+            "**Risk Score**", "", "",
+            f"**{inh_weighted_total} ÷ {total_weight} = {weighted_avg}**", "",
+        ])
     parts.append(rpt.subsection("Dimension Breakdown", rpt.table(dim_headers, dim_rows)))
 
     # 7. Revision History (only if prior revisions exist)
