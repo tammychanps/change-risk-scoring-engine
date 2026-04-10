@@ -32,3 +32,17 @@ Different organizations have different risk appetites. A fintech startup might w
 CAB meetings follow a structured approval workflow. The output is not "here's a score, figure it out" — it is a clear **GO**, **GO (conditional)**, or **NO-GO** with specific, numbered mitigations. This mirrors how real Change Advisory Boards operate at companies like HSBC, JPMorgan, and Visa.
 
 The numbered mitigations serve as an action checklist: each maps to a high-scoring dimension, giving the change implementer a clear path from "NO-GO" to "GO (conditional)." This reduces CAB meeting time and eliminates ambiguity about what needs to happen before re-assessment.
+
+## 6. Inherent vs. Residual Risk (ISO 31000 / NIST SP 800-30 Model)
+
+Risk should be tracked in two forms, not one:
+
+- **Inherent risk** — the raw score before any mitigations, which never changes for a given input. This is the auditable baseline.
+- **Residual risk** — the score after addressed mitigations are applied, recomputed from inherent. This is what drives the Go/No-Go recommendation.
+
+Both are persisted to the per-revision audit record (`change-revisions/{CR-ID}/rev-{N}.json`) and rendered side-by-side in the CAB report. A reviewer can always answer two questions: "What was the unmitigated risk?" and "What did we expect after the mitigations would land?"
+
+This matches the framing operational risk teams already use (ISO 31000, NIST SP 800-30, COSO ERM, and most bank-internal risk taxonomies). Modeling risk as a single number obscures the value of mitigations and makes it harder to defend a GO decision when the inherent score is high.
+
+**Calibrated reductions, not flat:** each mitigation declares a target dimension and a reduction value chosen to be individually defensible. A full InfoSec pre-deployment review reduces `security_exposure` by 3 points (controls verified ≈ risk largely controlled); a war-room bridge call reduces `team_experience` by 1 (additional coverage during execution but doesn't replace muscle memory). Flat -1 across all mitigations was rejected because it underweights strong mitigations and overweights weak ones, producing residual scores that don't match how a real CAB would assess the post-mitigation state.
+

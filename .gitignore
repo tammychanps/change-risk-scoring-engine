@@ -32,6 +32,9 @@ risk-report.md
 incident-report.md
 status-report.md
 
+# Revision history snapshots (auto-generated per run)
+change-revisions/
+
 # Ollama models
 *.gguf
 models/

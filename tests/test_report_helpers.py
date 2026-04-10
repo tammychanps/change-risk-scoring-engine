@@ -21,27 +21,35 @@ from common.report import decision_badge, risk_badge, score_gauge
 class TestScoreGauge:
     def test_low_score_marks_low_band(self):
         out = score_gauge(1.5, "LOW")
-        assert "LOW▲" in out
+        assert "LOW (≤2.0)▲" in out
         assert "1.5 / 5.0" in out
 
     def test_medium_score_marks_med_band(self):
         out = score_gauge(2.7, "MEDIUM")
-        assert "MED▲" in out
+        assert "MED (≤3.0)▲" in out
         assert "**LOW**" not in out  # only the active band has the marker
 
     def test_high_score_marks_high_band(self):
         out = score_gauge(3.28, "HIGH")
-        assert "HIGH▲" in out
+        assert "HIGH (≤4.0)▲" in out
         assert "3.28 / 5.0" in out
 
     def test_critical_score_marks_crit_band(self):
         out = score_gauge(4.6, "CRITICAL")
-        assert "CRIT▲" in out
+        assert "CRIT (>4.0)▲" in out
 
     def test_only_one_band_marked(self):
         out = score_gauge(3.28, "HIGH")
         # Only one triangle should appear
         assert out.count("▲") == 1
+
+    def test_gauge_shows_all_threshold_boundaries(self):
+        """Gauge must display numeric thresholds for all bands."""
+        out = score_gauge(3.0, "MEDIUM")
+        assert "≤2.0" in out
+        assert "≤3.0" in out
+        assert "≤4.0" in out
+        assert ">4.0" in out
 
     def test_gauge_renders_as_markdown_table(self):
         out = score_gauge(3.28, "HIGH")

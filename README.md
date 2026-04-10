@@ -14,6 +14,34 @@ In regulated financial services (PCI DSS, SOX, FFIEC), every production change g
 
 > **Designed for regulated environments — all processing is local, no data sent to external APIs.**
 
+## Before / After Mitigation (Inherent vs. Residual Risk)
+
+The engine models change risk in the language operational risk teams already use: **inherent risk** (raw score, before mitigations) vs. **residual risk** (after mitigations are addressed). Inherent stays auditable; residual drives the Go/No-Go recommendation. This matches ISO 31000 / NIST SP 800-30 / COSO ERM terminology.
+
+The same change request, scored at two revisions:
+
+| | **Rev 1 — initial submission** | **Rev 2 — after mitigations addressed** |
+|---|---|---|
+| Inherent risk | 3.11 / 5.0 **HIGH** 🔴 | 2.89 / 5.0 **MEDIUM** ⚠️ |
+| Residual risk | 3.11 / 5.0 **HIGH** 🔴 *(no mitigations addressed yet)* | **1.72 / 5.0 LOW** ✅ |
+| Decision | 🟡 **GO (conditional)** — 5 mitigations required | 🟢 **GO** — *Residual risk after 5/5 mitigations addressed* |
+| Full report | [`sample-output.md`](sample-output.md) | [`sample-output-rev2.md`](sample-output-rev2.md) |
+
+The same CR ID is preserved across revisions. Each rev's full audit record (inherent score, residual score, mitigation list, addressed mitigations, timestamp) is persisted to `change-revisions/{CR-ID}/rev-{N}.json` so future reviewers can reconstruct the decision trail.
+
+**Two effects stack in rev 2:** the inherent score itself dropped (3.11 → 2.89) because input data improved over time (e.g., `recent_incidents_30d` went from 1 to 0 as the team resolved the prior incident). Then mitigations drive the residual down further (2.89 → 1.72). The report explains both shifts — a CAB reviewer sees exactly what changed.
+
+**How residual is computed:** each generated mitigation is tagged with a target dimension and a calibrated reduction (e.g., a full InfoSec review reduces `security_exposure` by 3 points; a war-room bridge reduces `team_experience` by 1). Addressed mitigations apply their reductions to the inherent dim scores (floor at 1), then the weighted average and risk level are recomputed. The Go/No-Go logic uses the residual.
+
+**Decision bands:**
+
+| Score | Level | Decision |
+|---|---|---|
+| ≤ 2.0 | LOW | 🟢 GO |
+| ≤ 3.0 | MEDIUM | 🟢 GO |
+| ≤ 4.0 | HIGH | 🟡 GO (conditional) — mitigations required |
+| > 4.0 | CRITICAL | 🔴 NO-GO — defer or decompose |
+
 ## Architecture
 
 ```

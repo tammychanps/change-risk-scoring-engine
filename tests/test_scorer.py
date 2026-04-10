@@ -21,11 +21,13 @@ from scorer import (
     build_report,
     build_revision_record,
     classify_risk,
+    compute_residual,
     decision_key,
     explain_high_score,
     generate_mitigations,
     go_nogo,
     load_revision_history,
+    mitigation_text,
     render_revision_history,
     save_revision_record,
     score_change,
@@ -116,6 +118,10 @@ class TestChangeComplexity:
 
 
 class TestSecurityExposure:
+    """Security dimension is binary (1 or 4). Breadth of sensitive-system
+    overlap is intentionally NOT counted here — that signal already lives
+    in scope_impact + change_complexity. See DECISIONS.md."""
+
     def test_no_security_impact(self):
         assert score_security_exposure({"security_impact": False}) == 1
 
@@ -125,12 +131,13 @@ class TestSecurityExposure:
             "systems_affected": ["ci-cd-pipeline"],
         }) == 4
 
-    def test_security_impact_with_sensitive(self):
+    def test_security_impact_with_sensitive_does_not_bump(self):
+        """Even with multiple sensitive systems, security caps at 4."""
         result = score_security_exposure({
             "security_impact": True,
             "systems_affected": ["payment-gateway", "fraud-detection"],
         })
-        assert result == 5
+        assert result == 4
 
     def test_missing_field(self):
         assert score_security_exposure({}) == 1
@@ -337,17 +344,27 @@ class TestMitigations:
         dim_results = {k: {"label": k, "score": 1, "weight": 1} for k in DIMENSION_SCORERS}
         mits = generate_mitigations({}, dim_results, "LOW")
         assert len(mits) >= 1
-        assert "standard" in mits[0].lower()
+        assert "standard" in mits[0]["text"].lower()
 
     def test_high_risk_gets_war_room(self, default_config):
         dim_results = {k: {"label": k, "score": 4, "weight": 1} for k in DIMENSION_SCORERS}
         mits = generate_mitigations({}, dim_results, "HIGH")
-        assert any("war room" in m.lower() for m in mits)
+        assert any("war room" in m["text"].lower() for m in mits)
 
     def test_critical_gets_monitoring(self, default_config):
         dim_results = {k: {"label": k, "score": 5, "weight": 1} for k in DIMENSION_SCORERS}
         mits = generate_mitigations({}, dim_results, "CRITICAL")
-        assert any("monitoring" in m.lower() for m in mits)
+        assert any("monitoring" in m["text"].lower() for m in mits)
+
+    def test_mitigations_are_tagged_dicts(self, default_config):
+        """Each mitigation must carry text + target_dim + reduction."""
+        dim_results = {k: {"label": k, "score": 4, "weight": 1} for k in DIMENSION_SCORERS}
+        mits = generate_mitigations({}, dim_results, "HIGH")
+        for m in mits:
+            assert isinstance(m, dict)
+            assert "text" in m and m["text"]
+            assert "target_dim" in m  # may be None for the standard fallback
+            assert "reduction" in m
 
 
 # ── Go/No-Go Tests ───────────────────────────────────────────────────
@@ -610,3 +627,211 @@ class TestRevisionHistory:
         # rev 2 (current) should NOT appear in the prior table
         assert "2026-04-09" in out
         assert "2026-04-10" not in out
+
+    def test_render_history_handles_dict_mitigations(self):
+        """Mitigations stored as dicts (new schema) should render their text."""
+        history = [
+            {"revision": 1, "timestamp": "2026-04-09T10:00:00", "score": 3.28,
+             "level": "HIGH", "decision": "GO_CONDITIONAL",
+             "mitigations": [
+                 {"text": "Dry-run in staging", "target_dim": "change_complexity",
+                  "reduction": 1},
+                 {"text": "Engage InfoSec", "target_dim": "security_exposure",
+                  "reduction": 1},
+             ]},
+        ]
+        out = render_revision_history(history, current_rev=2, current_addressed=[1])
+        assert "Dry-run in staging" in out
+        assert "Engage InfoSec" in out
+        assert "✅ 1." in out
+        assert "⬜ 2." in out
+
+    def test_render_history_shows_inherent_and_residual_columns(self):
+        """New schema records show both inherent and residual progression."""
+        history = [
+            {"revision": 1, "timestamp": "2026-04-09T10:00:00",
+             "inherent_score": 3.28, "inherent_level": "HIGH",
+             "residual_score": 3.28, "residual_level": "HIGH",
+             "decision": "GO_CONDITIONAL", "mitigations": []},
+        ]
+        out = render_revision_history(history, current_rev=2, current_addressed=[])
+        assert "Inherent" in out
+        assert "Residual" in out
+        assert "3.28/5.0 HIGH" in out
+
+
+# ── Inherent vs Residual Risk Tests ──────────────────────────────────
+
+class TestComputeResidual:
+    """compute_residual applies addressed mitigations to inherent scores
+    to produce a residual dim_results, weighted average, and risk level."""
+
+    def _inherent(self):
+        return {
+            "scope_impact": {"label": "Scope", "score": 3, "weight": 3},
+            "change_complexity": {"label": "Complexity", "score": 4, "weight": 3},
+            "security_exposure": {"label": "Security", "score": 4, "weight": 3},
+            "customer_visibility": {"label": "Customer", "score": 4, "weight": 2},
+            "rollback_readiness": {"label": "Rollback", "score": 1, "weight": 2},
+            "deployment_window": {"label": "Window", "score": 1, "weight": 1},
+            "team_experience": {"label": "Experience", "score": 3, "weight": 2},
+            "recent_stability": {"label": "Stability", "score": 3, "weight": 2},
+        }
+
+    def _config(self):
+        return {"thresholds": {"LOW": 2.0, "MEDIUM": 3.0, "HIGH": 4.0}}
+
+    def _mits(self):
+        return [
+            {"text": "Dry-run", "target_dim": "change_complexity", "reduction": 1},
+            {"text": "InfoSec", "target_dim": "security_exposure", "reduction": 1},
+            {"text": "Comms", "target_dim": "customer_visibility", "reduction": 1},
+            {"text": "War room", "target_dim": "team_experience", "reduction": 1},
+            {"text": "Monitoring", "target_dim": "recent_stability", "reduction": 1},
+        ]
+
+    def test_no_addressed_returns_unchanged_scores(self):
+        inh = self._inherent()
+        residual, avg, level = compute_residual(inh, self._mits(), [], self._config())
+        for k in inh:
+            assert residual[k]["score"] == inh[k]["score"]
+
+    def test_all_addressed_drops_targeted_dims(self):
+        residual, avg, level = compute_residual(
+            self._inherent(), self._mits(), [1, 2, 3, 4, 5], self._config()
+        )
+        # All five targeted dims should drop by 1
+        assert residual["change_complexity"]["score"] == 3
+        assert residual["security_exposure"]["score"] == 3
+        assert residual["customer_visibility"]["score"] == 3
+        assert residual["team_experience"]["score"] == 2
+        assert residual["recent_stability"]["score"] == 2
+        # Untouched dims unchanged
+        assert residual["scope_impact"]["score"] == 3
+        assert residual["rollback_readiness"]["score"] == 1
+
+    def test_partial_addressed_drops_only_specified(self):
+        residual, avg, level = compute_residual(
+            self._inherent(), self._mits(), [2, 5], self._config()
+        )
+        assert residual["security_exposure"]["score"] == 3  # mit 2 addressed
+        assert residual["recent_stability"]["score"] == 2  # mit 5 addressed
+        assert residual["change_complexity"]["score"] == 4  # mit 1 NOT addressed
+        assert residual["customer_visibility"]["score"] == 4  # mit 3 NOT addressed
+        assert residual["team_experience"]["score"] == 3  # mit 4 NOT addressed
+
+    def test_residual_score_floors_at_1(self):
+        """Score cannot drop below 1 even with multiple reductions."""
+        inh = self._inherent()
+        inh["security_exposure"]["score"] = 2
+        mits = [
+            {"text": "A", "target_dim": "security_exposure", "reduction": 1},
+            {"text": "B", "target_dim": "security_exposure", "reduction": 1},
+            {"text": "C", "target_dim": "security_exposure", "reduction": 1},
+        ]
+        residual, avg, level = compute_residual(inh, mits, [1, 2, 3], self._config())
+        assert residual["security_exposure"]["score"] == 1  # floor, not 0 or -1
+
+    def test_recomputes_weighted_average(self):
+        """Residual weighted average must recompute from new scores."""
+        inh = self._inherent()
+        _, inh_avg, _ = compute_residual(inh, self._mits(), [], self._config())
+        residual, res_avg, _ = compute_residual(
+            inh, self._mits(), [1, 2, 3, 4, 5], self._config()
+        )
+        assert res_avg < inh_avg  # residual must be lower
+
+    def test_recomputes_risk_level(self):
+        """Risk level reclassifies when residual crosses a threshold."""
+        # Inherent: all dims at 5 → CRITICAL
+        inh = {k: {"label": k, "score": 5, "weight": 1} for k in DIMENSION_SCORERS}
+        mits = [
+            {"text": f"M{k}", "target_dim": k, "reduction": 4}
+            for k in DIMENSION_SCORERS
+        ]
+        all_indices = list(range(1, len(mits) + 1))
+        _, inh_avg, inh_level = compute_residual(inh, mits, [], self._config())
+        _, res_avg, res_level = compute_residual(inh, mits, all_indices, self._config())
+        levels_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+        assert inh_level == "CRITICAL"
+        # All scores driven to floor (1) → residual should be LOW
+        assert res_level == "LOW"
+        assert levels_order[res_level] < levels_order[inh_level]
+
+    def test_invalid_addressed_index_ignored(self):
+        """Out-of-range addressed indices should be silently ignored."""
+        residual, avg, level = compute_residual(
+            self._inherent(), self._mits(), [99], self._config()
+        )
+        # No change — index 99 doesn't map to any mitigation
+        for k in self._inherent():
+            assert residual[k]["score"] == self._inherent()[k]["score"]
+
+    def test_does_not_mutate_input(self):
+        """compute_residual must not mutate the inherent dim_results."""
+        inh = self._inherent()
+        original_security = inh["security_exposure"]["score"]
+        compute_residual(inh, self._mits(), [1, 2, 3, 4, 5], self._config())
+        assert inh["security_exposure"]["score"] == original_security
+
+
+class TestRevisionRecordInherentResidual:
+    """build_revision_record stores both inherent and residual scores."""
+
+    def test_stores_inherent_and_residual_separately(self):
+        cr = {"id": "CR-X", "revision": 2, "addressed_mitigations": [1, 2]}
+        record = build_revision_record(
+            cr, weighted_avg=3.28, risk_level="HIGH",
+            recommendation="**GO** —", mitigations=[],
+            residual_score=1.8, residual_level="LOW",
+        )
+        assert record["inherent_score"] == 3.28
+        assert record["inherent_level"] == "HIGH"
+        assert record["residual_score"] == 1.8
+        assert record["residual_level"] == "LOW"
+
+    def test_residual_defaults_to_inherent_when_not_provided(self):
+        cr = {"id": "CR-X", "revision": 1}
+        record = build_revision_record(
+            cr, weighted_avg=3.28, risk_level="HIGH",
+            recommendation="**GO (conditional)** —", mitigations=[],
+        )
+        assert record["inherent_score"] == record["residual_score"] == 3.28
+        assert record["inherent_level"] == record["residual_level"] == "HIGH"
+
+    def test_score_field_holds_residual_for_backward_compat(self):
+        cr = {"id": "CR-X", "revision": 2}
+        record = build_revision_record(
+            cr, weighted_avg=3.28, risk_level="HIGH",
+            recommendation="**GO** —", mitigations=[],
+            residual_score=1.8, residual_level="LOW",
+        )
+        # Legacy `score`/`level` fields should reflect residual (the
+        # decision-relevant value), so old downstream code keeps working.
+        assert record["score"] == 1.8
+        assert record["level"] == "LOW"
+
+    def test_dict_mitigations_preserved_with_target_dim(self):
+        cr = {"id": "CR-X", "revision": 1}
+        mits = [
+            {"text": "Dry run", "target_dim": "change_complexity", "reduction": 1},
+            {"text": "InfoSec", "target_dim": "security_exposure", "reduction": 1},
+        ]
+        record = build_revision_record(
+            cr, weighted_avg=3.0, risk_level="MEDIUM",
+            recommendation="**GO (conditional)** —", mitigations=mits,
+        )
+        assert len(record["mitigations"]) == 2
+        assert record["mitigations"][0]["text"] == "Dry run"
+        assert record["mitigations"][0]["target_dim"] == "change_complexity"
+
+    def test_string_mitigations_normalized_to_dicts(self):
+        """Legacy string mitigations should be normalized for the audit record."""
+        cr = {"id": "CR-X", "revision": 1}
+        record = build_revision_record(
+            cr, weighted_avg=3.0, risk_level="MEDIUM",
+            recommendation="**GO (conditional)** —",
+            mitigations=["legacy string mit"],
+        )
+        assert record["mitigations"][0]["text"] == "legacy string mit"
+        assert record["mitigations"][0]["target_dim"] is None

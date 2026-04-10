@@ -1,72 +1,82 @@
 # Change Risk Assessment
 ## CAB Review Document
 
-> Generated: 2026-04-05
+> Generated: 2026-04-09
 > Tool: AI-powered analysis with local LLM (Ollama) for data security
+
 
 ## Change Request Overview
 
-| Field | Value |
-| --- | --- |
-| **Change ID** | CR-2026-0042 |
-| **Title** | Migrate Payment Gateway to AWS EKS |
-| **Type** | infrastructure |
-| **Systems Affected** | payment-gateway, transaction-service, fraud-detection |
-| **Deployment Window** | Saturday 02:00-06:00 PST |
-| **Rollback Plan** | Revert DNS to previous EC2 instances, estimated 15 minutes. Tested in staging. |
-| **Rollback Tested** | Yes |
+| Field | Value |  | Field | Value |
+| --- | --- | --- | --- | --- |
+| **Change ID** | CR-2026-0042 (rev 1) |  | **Systems Affected** | payment-gateway, transaction-service, fraud-detection |
+| **Title** | Migrate Payment Gateway to AWS EKS |  | **Deployment Window** | Saturday 02:00-06:00 PST |
+| **Type** | infrastructure |  | **CAB Date** | 2026-04-12 |
+| **Requester** | Jane Smith |  | **Implementation Plan** | [View Runbook](https://confluence.example.com/display/PAY/CR-2026-0042-runbook) |
+| **Requesting Team** | Payments Engineering |  | **Rollback Plan** | Revert DNS to previous EC2 instances, estimated 15 minutes. Tested in staging. |
+| **Implementation Team** | Platform SRE |  | **Rollback Tested** | Yes |
+
+
+## Risk Narrative
+
+**Risk Narrative for Change Request CR-2026-0042**
+
+The proposed change, Migrate Payment Gateway to AWS EKS (CR-2026-0042), poses a moderate to high level of risk due to its complexity and potential impact on system stability. The change involves migrating payment processing from EC2 to EKS, which will enable better auto-scaling and container orchestration. However, the analysis reveals several areas of concern.
+
+The primary risks associated with this change are related to Change Complexity (4/5) and Security Exposure (4/5). The migration to a new infrastructure platform introduces uncertainty around system behavior, particularly during the deployment window on Saturday between 02:00-06:00 PST. Additionally, the increased reliance on AWS EKS may expose the payment gateway to potential security vulnerabilities if not properly configured or monitored. Furthermore, the recent stability of the systems involved (3/5) is a concern, as it indicates that there may be underlying issues that could be exacerbated by this change.
+
+The risk narrative also highlights the importance of effective rollback procedures in case of an issue. Although the team has experience with similar past changes (e.g., Migrate payment gateway from on-prem to AWS EC2), the roll back readiness score is only 1/5, indicating a potential challenge in reverting to the previous state quickly and efficiently. Overall, while the change has been tested in staging, careful planning, monitoring, and execution are essential to mitigate the risks associated with this migration.
+
+
+## Go / No-Go Recommendation
+
+> 🟡 **GO (CONDITIONAL)** — High risk but manageable. Proceed only with all mitigations implemented and CAB approval.
+
+
+## Required Mitigations
+
+1. Conduct a dry-run in staging that mirrors the exact production sequence. Document each step with expected vs. actual outcomes. *(−2 to Change Complexity)*
+2. Engage InfoSec for pre-deployment review. Verify TLS/mTLS configurations, API key rotation, and encryption-at-rest settings before cutover. *(−3 to Security Exposure)*
+3. Prepare customer communication templates (status page, in-app banner) in case of degraded service. Pre-brief the support team. *(−2 to Customer Visibility)*
+4. Establish a dedicated war room (bridge call) for the duration of the change window with representatives from engineering, SRE, and on-call support. *(−1 to Team Experience)*
+5. Enable enhanced monitoring and alerting 30 minutes before the change window. Set up real-time dashboards for all affected systems. *(−1 to Recent Stability)*
+
 
 ## Risk Assessment
 
-**Overall Risk Score: 3.28 / 5.0** **HIGH** 🔴
+| Score | Level | Where it sits |
+| --- | --- | --- |
+| **3.11 / 5.0** | **HIGH** 🔴 | `LOW (≤2.0) │ MED (≤3.0) │ HIGH (≤4.0)▲ │ CRIT (>4.0)` |
+
 
 ### Dimension Breakdown
 
-| Dimension | Score (1-5) | Weight | Weighted |
-| --- | --- | --- | --- |
-| Scope / Blast Radius | ███░░ 3 | 3 | 9 |
-| Change Complexity | ████░ 4 | 3 | 12 |
-| Security Exposure | █████ 5 | 3 | 15 |
-| Customer Visibility | ████░ 4 | 2 | 8 |
-| Rollback Readiness | █░░░░ 1 | 2 | 2 |
-| Deployment Window | █░░░░ 1 | 1 | 1 |
-| Team Experience | ███░░ 3 | 2 | 6 |
-| Recent Stability | ███░░ 3 | 2 | 6 |
+| Dimension | Score (1-5) | Weight | Weighted | Why High |
+| --- | --- | --- | --- | --- |
+| Scope / Blast Radius | ███░░ 3 | 3 | 9 | — |
+| Change Complexity | ████░ 4 | 3 | 12 | Infrastructure change touching 3 system(s) — high coordination and execution complexity |
+| Security Exposure | ████░ 4 | 3 | 12 | Touches authentication, encryption, PII, or payment data (security_impact=true) — InfoSec review required |
+| Customer Visibility | ████░ 4 | 2 | 8 | Customer-facing systems affected — failure would be visible to end users immediately |
+| Rollback Readiness | █░░░░ 1 | 2 | 2 | — |
+| Deployment Window | █░░░░ 1 | 1 | 1 | — |
+| Team Experience | ███░░ 3 | 2 | 6 | — |
+| Recent Stability | ███░░ 3 | 2 | 6 | — |
+
 
 ## Similar Past Changes (Top 3)
 
 | Change ID | Title | Type | Risk Score | Outcome | Date |
 | --- | --- | --- | --- | --- | --- |
 | CR-2025-0260 | Migrate payment gateway from on-prem to AWS EC2 | infrastructure | 4.3 | Rollback | 2025-10-08 |
-| CR-2025-0210 | Deploy containerized auth service to EKS | infrastructure | 3.5 | Success | 2025-08-18 |
-| CR-2025-0172 | Upgrade Kubernetes cluster from 1.27 to 1.29 | infrastructure | 4.0 | Success | 2025-07-10 |
+| CR-2025-0275 | Deploy new fraud detection ML model v2.4 | application | 3.2 | Success | 2025-10-20 |
+| CR-2025-0301 | Migrate core banking API from REST v2 to v3 | application | 3.8 | Success | 2025-11-15 |
 
 **Outcome Details:**
 - **CR-2025-0260**: TLS certificate chain issue caused 502 errors at 03:15. Rolled back to on-prem at 03:42. Root cause: intermediate cert not included in ELB config.
-- **CR-2025-0210**: Blue-green deployment. Health checks passed. Auth latency reduced from 120ms to 45ms.
-- **CR-2025-0172**: Node-by-node rolling upgrade. Two pods failed liveness checks due to deprecated API calls — patched and redeployed.
+- **CR-2025-0275**: Canary deployment over 4 hours. False positive rate dropped from 2.1% to 1.4%.
+- **CR-2025-0301**: Completed within window. Minor latency spike (12ms) during cutover resolved in 5 minutes.
 
-## Risk Narrative
 
-This change request (CR-2026-0042) proposes to migrate payment gateway to AWS EKS, affecting 3 system(s): payment-gateway, transaction-service, fraud-detection. The overall risk assessment is 3.28/5.0 (HIGH).
-
-Primary risk drivers: change complexity, security exposure, customer visibility. The deployment window (Saturday 02:00-06:00 PST) is during off-peak hours, reducing customer impact potential. The rollback plan has been documented and tested in staging, which is a positive indicator.
-
-**Historical Context:** Historical data shows 1 of 3 similar changes experienced issues (rollback). Notably, "Migrate payment gateway from on-prem to AWS EC2" (2025-10-08) resulted in rollback: TLS certificate chain issue caused 502 errors at 03:15. Rolled back to on-prem at 03:42. Root cause: intermediate cert not included in ELB config. 2 similar change(s) completed successfully, suggesting the team can execute this type of work when properly prepared.
-
-Given the high risk classification, this change requires explicit CAB approval with documented mitigations for each high-scoring dimension. A war room should be established for the duration of the change window.
-
-## Go / No-Go Recommendation
-
-**GO (conditional)** — High risk but no critical-scoring dimensions. Proceed only with all mitigations implemented and CAB approval.
-
-## Required Mitigations
-
-1. Conduct a dry-run in staging that mirrors the exact production sequence. Document each step with expected vs. actual outcomes.
-2. Engage InfoSec for pre-deployment review. Verify TLS/mTLS configurations, API key rotation, and encryption-at-rest settings before cutover.
-3. Prepare customer communication templates (status page, in-app banner) in case of degraded service. Pre-brief the support team.
-4. Establish a dedicated war room (bridge call) for the duration of the change window with representatives from engineering, SRE, and on-call support.
-5. Enable enhanced monitoring and alerting 30 minutes before the change window. Set up real-time dashboards for all affected systems.
 
 ---
 

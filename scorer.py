@@ -71,18 +71,18 @@ def score_change_complexity(cr: dict) -> int:
 
 
 def score_security_exposure(cr: dict) -> int:
-    """Score based on security impact flag and affected systems."""
-    base = 1
+    """Score based on security impact flag.
+
+    Returns 4 when the change touches authentication, encryption, PII, or
+    payment data; 1 otherwise. We deliberately do NOT bump for breadth of
+    sensitive-system overlap — that signal is already captured by
+    score_scope_impact and score_change_complexity, and double-counting it
+    here inflated the residual score and broke the GO-conditional pathway.
+    See DECISIONS.md ("Security dimension is binary, not bump-by-breadth").
+    """
     if cr.get("security_impact", False):
-        base = 4
-    # Bump if payment or auth systems are touched
-    sensitive = {"payment-gateway", "auth-service", "identity-service",
-                 "fraud-detection", "customer-data-lake"}
-    affected = set(cr.get("systems_affected", []))
-    overlap = len(affected & sensitive)
-    if overlap >= 2:
-        base = min(base + 1, 5)
-    return base
+        return 4
+    return 1
 
 
 def score_customer_visibility(cr: dict) -> int:
@@ -413,71 +413,186 @@ Write the risk narrative now:"""
 #  Mitigation Recommendations
 # =====================================================================
 
-def generate_mitigations(cr: dict, dim_results: dict, risk_level: str) -> List[str]:
-    """Generate numbered mitigation recommendations based on high-scoring dimensions."""
-    mitigations = []
+# =====================================================================
+#  Mitigation Templates  (text + target dim + reduction)
+# =====================================================================
+# Each mitigation maps to a single dimension it addresses. When marked
+# as "addressed" in a future revision, that dimension's residual score
+# drops by `reduction` points (floor at 1).
+#
+# Reductions are calibrated per mitigation, not flat. A full InfoSec
+# pre-deployment review meaningfully removes more risk than a war-room
+# bridge call. Each value is chosen to be individually defensible to a
+# CAB reviewer asking "why does this mitigation deserve N points?".
 
-    # Always recommend based on high-scoring dimensions
+DIMENSION_MITIGATIONS = {
+    "scope_impact": {
+        "text": ("Implement phased rollout — deploy to one system at a time with "
+                 "validation gates between each phase."),
+        "target_dim": "scope_impact",
+        "reduction": 1,  # phasing helps but blast radius still exists
+    },
+    "change_complexity": {
+        "text": ("Conduct a dry-run in staging that mirrors the exact production sequence. "
+                 "Document each step with expected vs. actual outcomes."),
+        "target_dim": "change_complexity",
+        "reduction": 2,  # rehearsal removes most execution uncertainty
+    },
+    "security_exposure": {
+        "text": ("Engage InfoSec for pre-deployment review. Verify TLS/mTLS configurations, "
+                 "API key rotation, and encryption-at-rest settings before cutover."),
+        "target_dim": "security_exposure",
+        "reduction": 3,  # full controls verification = security risk largely controlled
+    },
+    "customer_visibility": {
+        "text": ("Prepare customer communication templates (status page, in-app banner) "
+                 "in case of degraded service. Pre-brief the support team."),
+        "target_dim": "customer_visibility",
+        "reduction": 2,  # users informed + support ready dampens visibility risk
+    },
+    "rollback_readiness": {
+        "text": ("Test the rollback procedure end-to-end in staging before the change window. "
+                 "Document the exact rollback trigger criteria and decision authority."),
+        "target_dim": "rollback_readiness",
+        "reduction": 2,  # E2E tested rollback removes recovery uncertainty
+    },
+    "deployment_window": {
+        "text": ("Consider rescheduling to an off-peak window (weekend 02:00-06:00). "
+                 "If not possible, ensure real-time traffic monitoring is active."),
+        "target_dim": "deployment_window",
+        "reduction": 2,  # off-peak reschedule directly addresses timing risk
+    },
+    "team_experience": {
+        "text": ("Assign a subject-matter expert or external consultant to shadow the deployment. "
+                 "Review runbook with the full team 24 hours before the window."),
+        "target_dim": "team_experience",
+        "reduction": 1,  # SME shadow helps but doesn't replace muscle memory
+    },
+    "recent_stability": {
+        "text": ("Resolve or document root cause of recent incidents before proceeding. "
+                 "Lower the rollback trigger threshold — faster rollback if anomalies appear."),
+        "target_dim": "recent_stability",
+        "reduction": 2,  # root cause resolved = baseline restored
+    },
+}
+
+# General mitigations triggered by HIGH/CRITICAL risk levels. These map
+# to dims that aren't necessarily high-scoring on their own but benefit
+# from the mitigation (war-room reduces team-experience risk; enhanced
+# monitoring reduces recent-stability risk).
+GENERAL_HIGH_MITIGATIONS = [
+    {
+        "text": ("Establish a dedicated war room (bridge call) for the duration of the change "
+                 "window with representatives from engineering, SRE, and on-call support."),
+        "target_dim": "team_experience",
+        "reduction": 1,  # additional coverage during execution
+    },
+    {
+        "text": ("Enable enhanced monitoring and alerting 30 minutes before the change window. "
+                 "Set up real-time dashboards for all affected systems."),
+        "target_dim": "recent_stability",
+        "reduction": 1,  # faster detection of anomalies
+    },
+]
+
+STANDARD_MITIGATION = {
+    "text": ("Standard change procedures apply. Ensure the on-call team is aware of the "
+             "deployment window."),
+    "target_dim": None,
+    "reduction": 0,
+}
+
+
+def generate_mitigations(cr: dict, dim_results: dict, risk_level: str) -> List[dict]:
+    """Generate numbered mitigation recommendations as tagged dicts.
+
+    Each mitigation is {"text", "target_dim", "reduction"}. The target_dim
+    and reduction enable residual-risk computation when the mitigation is
+    marked addressed in a later revision.
+    """
+    mitigations: List[dict] = []
+
+    # Per-dimension mitigations for any dim scoring >= 4
     for dim_key, info in dim_results.items():
-        if info["score"] >= 4:
-            if dim_key == "scope_impact":
-                mitigations.append(
-                    "Implement phased rollout — deploy to one system at a time with "
-                    "validation gates between each phase."
-                )
-            elif dim_key == "change_complexity":
-                mitigations.append(
-                    "Conduct a dry-run in staging that mirrors the exact production sequence. "
-                    "Document each step with expected vs. actual outcomes."
-                )
-            elif dim_key == "security_exposure":
-                mitigations.append(
-                    "Engage InfoSec for pre-deployment review. Verify TLS/mTLS configurations, "
-                    "API key rotation, and encryption-at-rest settings before cutover."
-                )
-            elif dim_key == "customer_visibility":
-                mitigations.append(
-                    "Prepare customer communication templates (status page, in-app banner) "
-                    "in case of degraded service. Pre-brief the support team."
-                )
-            elif dim_key == "rollback_readiness":
-                mitigations.append(
-                    "Test the rollback procedure end-to-end in staging before the change window. "
-                    "Document the exact rollback trigger criteria and decision authority."
-                )
-            elif dim_key == "deployment_window":
-                mitigations.append(
-                    "Consider rescheduling to an off-peak window (weekend 02:00-06:00). "
-                    "If not possible, ensure real-time traffic monitoring is active."
-                )
-            elif dim_key == "team_experience":
-                mitigations.append(
-                    "Assign a subject-matter expert or external consultant to shadow the deployment. "
-                    "Review runbook with the full team 24 hours before the window."
-                )
-            elif dim_key == "recent_stability":
-                mitigations.append(
-                    "Resolve or document root cause of recent incidents before proceeding. "
-                    "Lower the rollback trigger threshold — faster rollback if anomalies appear."
-                )
+        if info["score"] >= 4 and dim_key in DIMENSION_MITIGATIONS:
+            mitigations.append(dict(DIMENSION_MITIGATIONS[dim_key]))
 
-    # General mitigations for HIGH/CRITICAL
+    # General HIGH/CRITICAL mitigations (always added at HIGH or above)
     if risk_level in ("HIGH", "CRITICAL"):
-        mitigations.append(
-            "Establish a dedicated war room (bridge call) for the duration of the change window "
-            "with representatives from engineering, SRE, and on-call support."
-        )
-        mitigations.append(
-            "Enable enhanced monitoring and alerting 30 minutes before the change window. "
-            "Set up real-time dashboards for all affected systems."
-        )
+        for mit in GENERAL_HIGH_MITIGATIONS:
+            mitigations.append(dict(mit))
 
     if not mitigations:
-        mitigations.append(
-            "Standard change procedures apply. Ensure the on-call team is aware of the deployment window."
-        )
+        mitigations.append(dict(STANDARD_MITIGATION))
 
     return mitigations
+
+
+def mitigation_text(mit) -> str:
+    """Return the text of a mitigation, accepting either dict or legacy str."""
+    if isinstance(mit, dict):
+        return mit.get("text", "")
+    return str(mit)
+
+
+def mitigation_texts(mits: List) -> List[str]:
+    """Convert a list of mitigation dicts (or strings) to a list of text strings."""
+    return [mitigation_text(m) for m in mits]
+
+
+# =====================================================================
+#  Residual Risk  (inherent score adjusted by addressed mitigations)
+# =====================================================================
+
+def compute_residual(inherent_dim_results: Dict[str, dict],
+                     mitigations: List[dict],
+                     addressed_indices: List[int],
+                     config: dict) -> Tuple[Dict[str, dict], float, str]:
+    """Apply addressed mitigations to inherent scores to produce residual.
+
+    Each addressed mitigation reduces its target dimension's score by its
+    `reduction` value (flat -1 by default), with a floor of 1. The weighted
+    average and risk level are recomputed from the residual dim scores.
+
+    This implements the inherent vs. residual risk model from ISO 31000 /
+    NIST SP 800-30: inherent stays auditable; residual reflects the
+    expected post-mitigation state and drives the Go/No-Go recommendation.
+
+    Args:
+        inherent_dim_results: dim_results dict from score_change()
+        mitigations: list of mitigation dicts (with target_dim, reduction)
+        addressed_indices: 1-based mitigation indices marked as addressed
+        config: full config dict (for thresholds + weights)
+
+    Returns:
+        (residual_dim_results, residual_weighted_avg, residual_level)
+    """
+    # Deep-copy inherent scores so we don't mutate the input
+    residual = {
+        k: {"label": v["label"], "score": v["score"], "weight": v["weight"]}
+        for k, v in inherent_dim_results.items()
+    }
+
+    addressed_set = set(addressed_indices or [])
+    for idx, mit in enumerate(mitigations or [], start=1):
+        if idx not in addressed_set:
+            continue
+        target = mit.get("target_dim") if isinstance(mit, dict) else None
+        if not target or target not in residual:
+            continue
+        reduction = mit.get("reduction", 1) if isinstance(mit, dict) else 1
+        residual[target]["score"] = max(1, residual[target]["score"] - reduction)
+
+    # Recompute weighted average from residual scores
+    weighted_sum = 0.0
+    total_weight = 0
+    for info in residual.values():
+        weighted_sum += info["score"] * info["weight"]
+        total_weight += info["weight"]
+    residual_avg = round(weighted_sum / total_weight, 2) if total_weight > 0 else 0.0
+    residual_level = classify_risk(residual_avg, config)
+
+    return residual, residual_avg, residual_level
 
 
 # =====================================================================
@@ -485,21 +600,19 @@ def generate_mitigations(cr: dict, dim_results: dict, risk_level: str) -> List[s
 # =====================================================================
 
 def go_nogo(risk_level: str, dim_results: dict) -> str:
-    """Return a Go/No-Go recommendation with rationale."""
-    critical_dims = [info["label"] for info in dim_results.values() if info["score"] == 5]
+    """Return a Go/No-Go recommendation with rationale.
 
-    if risk_level == "LOW":
+    Decision bands (simplified scheme):
+      LOW    (≤ 2.0)  → GO
+      MEDIUM (≤ 3.0)  → GO  (acceptable risk, proceed with awareness)
+      HIGH   (≤ 4.0)  → GO (conditional)  (mitigations required before proceed)
+      CRITICAL (> 4.0) → NO-GO  (defer or decompose)
+    """
+    if risk_level in ("LOW", "MEDIUM"):
         return "**GO** — Low risk. Proceed with standard change procedures."
-    elif risk_level == "MEDIUM":
-        return "**GO (conditional)** — Proceed with enhanced monitoring and documented mitigations."
     elif risk_level == "HIGH":
-        if critical_dims:
-            return (
-                f"**NO-GO (pending mitigations)** — High risk with critical scores in: "
-                f"{', '.join(critical_dims)}. Address mitigations before re-assessment."
-            )
         return (
-            "**GO (conditional)** — High risk but no critical-scoring dimensions. "
+            "**GO (conditional)** — High risk but manageable. "
             "Proceed only with all mitigations implemented and CAB approval."
         )
     else:  # CRITICAL
@@ -572,58 +685,115 @@ def save_revision_record(history_root: str, change_id: str, record: dict) -> Pat
 
 
 def build_revision_record(cr: dict, weighted_avg: float, risk_level: str,
-                          recommendation: str, mitigations: List[str]) -> dict:
-    """Capture the assessment outcome for a single revision."""
+                          recommendation: str, mitigations: List,
+                          residual_score: Optional[float] = None,
+                          residual_level: Optional[str] = None) -> dict:
+    """Capture the assessment outcome for a single revision.
+
+    Stores both inherent and residual scores so future revisions can
+    show the progression. If residual_score / residual_level are not
+    provided, residual = inherent (no mitigations addressed yet).
+
+    `mitigations` may be a list of dicts (new format with target_dim) or
+    a list of strings (legacy). Both are persisted as text for the audit
+    trail; dicts also persist their target_dim and reduction.
+    """
+    # Normalize mitigations to a list of dicts for the audit record
+    mits_for_record = []
+    for m in (mitigations or []):
+        if isinstance(m, dict):
+            mits_for_record.append({
+                "text": m.get("text", ""),
+                "target_dim": m.get("target_dim"),
+                "reduction": m.get("reduction", 1),
+            })
+        else:
+            mits_for_record.append({"text": str(m), "target_dim": None, "reduction": 0})
+
     return {
         "change_id": cr.get("id"),
         "revision": cr.get("revision", 1),
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "score": weighted_avg,
-        "level": risk_level,
+        "inherent_score": weighted_avg,
+        "inherent_level": risk_level,
+        "residual_score": residual_score if residual_score is not None else weighted_avg,
+        "residual_level": residual_level if residual_level is not None else risk_level,
+        # Backward-compat: keep score/level fields pointing at residual
+        # (the decision-relevant value).
+        "score": residual_score if residual_score is not None else weighted_avg,
+        "level": residual_level if residual_level is not None else risk_level,
         "recommendation": recommendation,
         "decision": decision_key(recommendation),
-        "mitigations": mitigations,
+        "mitigations": mits_for_record,
         "addressed_mitigations": cr.get("addressed_mitigations", []),
     }
 
 
 def render_revision_history(history: List[dict], current_rev: int,
-                            current_addressed: List[int]) -> str:
-    """
-    Render a markdown section showing prior revisions and which mitigations
-    from the most recent prior revision were marked addressed in this run.
+                            current_addressed: List[int],
+                            current_inherent: Optional[float] = None,
+                            current_residual: Optional[float] = None) -> str:
+    """Render a markdown section showing prior revisions with inherent +
+    residual progression, plus a checklist of which mitigations from the
+    most recent prior revision were addressed in this run.
+
+    Each prior-revision row shows BOTH inherent and residual scores so a
+    CAB reviewer can see the risk-reduction story across revisions.
+
+    When current_inherent is provided and differs from the prior revision's
+    inherent, a delta note explains the shift (e.g., data improved over time
+    independent of mitigations).
     """
     prior = [r for r in history if r.get("revision", 0) < current_rev]
     if not prior:
         return ""
 
-    headers = ["Rev", "Timestamp", "Score", "Level", "Decision"]
+    headers = ["Rev", "Timestamp", "Inherent", "Residual", "Decision"]
     rows = []
     for rec in prior:
+        # Backward-compat: older records may only have `score` / `level`
+        inherent_score = rec.get("inherent_score", rec.get("score", "N/A"))
+        inherent_level = rec.get("inherent_level", rec.get("level", "N/A"))
+        residual_score = rec.get("residual_score", rec.get("score", "N/A"))
+        residual_level = rec.get("residual_level", rec.get("level", "N/A"))
         rows.append([
             f"rev {rec.get('revision')}",
             rec.get("timestamp", "N/A")[:19].replace("T", " "),
-            f"{rec.get('score', 'N/A')}/5.0",
-            rec.get("level", "N/A"),
+            f"{inherent_score}/5.0 {inherent_level}",
+            f"{residual_score}/5.0 {residual_level}",
             rec.get("decision", "N/A").replace("_", " "),
         ])
     table_md = rpt.table(headers, rows)
 
-    # Diff against the most recent prior revision
+    # Inherent-delta note: explain why current inherent differs from prior
     latest_prior = prior[-1]
+    delta_note = ""
+    prior_inh = latest_prior.get("inherent_score", latest_prior.get("score"))
+    if current_inherent is not None and prior_inh is not None:
+        delta = round(current_inherent - prior_inh, 2)
+        if delta != 0:
+            direction = "dropped" if delta < 0 else "rose"
+            delta_note = (
+                f"\n*Inherent risk {direction} {abs(delta):.2f} since rev "
+                f"{latest_prior['revision']} due to updated input data "
+                f"(e.g., resolved incidents, improved rollback, increased team experience). "
+                f"Residual risk reflects both this data improvement and addressed mitigations.*\n"
+            )
+
+    # Diff against the most recent prior revision
     prior_mits = latest_prior.get("mitigations", [])
     diff_lines = []
     if prior_mits and current_addressed:
         diff_lines.append(f"\n**Mitigations addressed since rev {latest_prior['revision']}:**\n")
         for i, mit in enumerate(prior_mits, start=1):
             mark = "✅" if i in current_addressed else "⬜"
-            diff_lines.append(f"- {mark} {i}. {mit}")
+            diff_lines.append(f"- {mark} {i}. {mitigation_text(mit)}")
     elif prior_mits:
         diff_lines.append(
             f"\n*No mitigations from rev {latest_prior['revision']} marked as addressed yet.*"
         )
 
-    return table_md + "\n" + "\n".join(diff_lines)
+    return table_md + delta_note + "\n" + "\n".join(diff_lines)
 
 
 # =====================================================================
@@ -726,20 +896,35 @@ def _build_overview_table(cr: dict) -> str:
 
 def build_report(cr: dict, dim_results: dict, weighted_avg: float,
                  risk_level: str, similar: List[dict], narrative: str,
-                 mitigations: List[str], config: dict,
-                 prior_revisions: Optional[List[dict]] = None) -> str:
+                 mitigations: List, config: dict,
+                 prior_revisions: Optional[List[dict]] = None,
+                 residual_dim_results: Optional[Dict[str, dict]] = None,
+                 residual_score: Optional[float] = None,
+                 residual_level: Optional[str] = None,
+                 prior_mitigations: Optional[List[dict]] = None) -> str:
     """Assemble the full Markdown risk report.
 
     Section order is decision-first:
       1. Change Request Overview
       2. Risk Narrative  (LLM-written)
-      3. Go / No-Go Recommendation  (color-coded)
-      4. Required Mitigations
-      5. Revision History  (only if prior revisions exist)
-      6. Risk Assessment  (score + inline gauge)
-      7. Dimension Breakdown  (with Why High justifications)
+      3. Go / No-Go Recommendation  (residual decision, color-coded)
+      4. Required Mitigations  (with addressed checkboxes if rev > 1)
+      5. Risk Assessment  (inherent + residual gauges)
+      6. Dimension Breakdown  (inherent + residual columns + Why High)
+      7. Revision History  (only if prior revisions exist)
       8. Similar Past Changes
+
+    Residual params default to inherent values for backward compatibility
+    when no mitigations have been addressed (rev 1, no prior history).
     """
+    # Default residual to inherent (rev 1 / no addressed mitigations case)
+    if residual_dim_results is None:
+        residual_dim_results = dim_results
+    if residual_score is None:
+        residual_score = weighted_avg
+    if residual_level is None:
+        residual_level = risk_level
+
     parts = []
 
     # Header
@@ -751,51 +936,110 @@ def build_report(cr: dict, dim_results: dict, weighted_avg: float,
     # 1. Change Request Overview (two-column)
     parts.append(rpt.section("Change Request Overview", _build_overview_table(cr)))
 
-    # 2. Risk Narrative (moved up)
+    # 2. Risk Narrative (LLM-written)
     parts.append(rpt.section("Risk Narrative", narrative))
 
-    # 3. Go / No-Go Recommendation (color-coded callout)
-    recommendation = go_nogo(risk_level, dim_results)
+    # 3. Go / No-Go Recommendation — uses RESIDUAL decision (color-coded)
+    recommendation = go_nogo(residual_level, residual_dim_results)
+    addressed = cr.get("addressed_mitigations", [])
+    # Use the prior revision's mitigation list for the "X of Y addressed"
+    # count when this revision is tracking a prior commitment.
+    tracked_mits = prior_mitigations if prior_mitigations else mitigations
+    total_tracked = len(tracked_mits or [])
+    addressed_count = len([i for i in addressed if 1 <= i <= total_tracked])
+    if addressed_count > 0 and total_tracked > 0:
+        recommendation = (
+            f"{recommendation.rstrip()}  \n"
+            f"*Residual risk after {addressed_count}/{total_tracked} mitigations addressed.*"
+        )
     badge = rpt.decision_badge(decision_key(recommendation))
-    # Strip the leading bold marker from recommendation since the badge replaces it
     rec_text = recommendation.split("** — ", 1)[-1] if "** — " in recommendation else recommendation
     callout = f"> {badge} — {rec_text}"
     parts.append(rpt.section("Go / No-Go Recommendation", callout))
 
-    # 4. Required Mitigations
-    if mitigations:
-        mit_text = "\n".join(f"{i+1}. {m}" for i, m in enumerate(mitigations))
+    # 4. Required Mitigations (with checkbox status + reduction tag)
+    display_mits = prior_mitigations if prior_mitigations else mitigations
+    if display_mits:
+        mit_lines = []
+        for i, m in enumerate(display_mits, start=1):
+            text = mitigation_text(m)
+            # Reduction tag: "(−N to Dimension Label)"
+            tag = ""
+            if isinstance(m, dict) and m.get("target_dim") and m.get("reduction"):
+                dim_label = dim_results.get(m["target_dim"], {}).get("label", m["target_dim"])
+                tag = f" *(−{m['reduction']} to {dim_label})*"
+            if addressed_count > 0:
+                mark = "✅" if i in addressed else "⬜"
+                mit_lines.append(f"{i}. {mark} {text}{tag}")
+            else:
+                mit_lines.append(f"{i}. {text}{tag}")
+        mit_text = "\n".join(mit_lines)
         parts.append(rpt.section("Required Mitigations", mit_text))
 
-    # 5. Revision History (only if prior revisions exist)
-    if prior_revisions:
-        history_md = render_revision_history(
-            prior_revisions,
-            current_rev=cr.get("revision", 1),
-            current_addressed=cr.get("addressed_mitigations", []),
+    # 5. Risk Assessment — show inherent + residual side by side
+    inherent_gauge = rpt.score_gauge(weighted_avg, risk_level)
+    if residual_score != weighted_avg or residual_level != risk_level:
+        residual_gauge = rpt.score_gauge(residual_score, residual_level)
+        ra_content = (
+            "**Inherent Risk** (raw score, before mitigations)\n\n"
+            f"{inherent_gauge}\n\n"
+            "**Residual Risk** (after addressed mitigations — drives the recommendation)\n\n"
+            f"{residual_gauge}"
         )
-        if history_md:
-            parts.append(rpt.section("Revision History", history_md))
+    else:
+        ra_content = inherent_gauge
+    parts.append(rpt.section("Risk Assessment", ra_content))
 
-    # 6. Risk Assessment (score + inline gauge)
-    gauge = rpt.score_gauge(weighted_avg, risk_level)
-    parts.append(rpt.section("Risk Assessment", gauge))
-
-    # 6. Dimension breakdown with "Why High" justification column
-    dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted", "Why High"]
+    # 6. Dimension breakdown with inherent + residual + Why High
+    show_residual = residual_dim_results is not dim_results and any(
+        residual_dim_results[k]["score"] != dim_results[k]["score"]
+        for k in dim_results
+    )
+    if show_residual:
+        dim_headers = ["Dimension", "Inherent", "Weight", "Weighted",
+                       "Residual", "Why High"]
+    else:
+        dim_headers = ["Dimension", "Score (1-5)", "Weight", "Weighted", "Why High"]
     dim_rows = []
     for dim_key, info in dim_results.items():
         weighted_val = info["score"] * info["weight"]
         score_bar = "█" * info["score"] + "░" * (5 - info["score"])
         why = explain_high_score(dim_key, cr, info["score"])
-        dim_rows.append([
-            info["label"],
-            f"{score_bar} {info['score']}",
-            str(info["weight"]),
-            str(weighted_val),
-            why or "—",
-        ])
+        if show_residual:
+            r_score = residual_dim_results[dim_key]["score"]
+            if r_score < info["score"]:
+                residual_cell = f"{info['score']} → {r_score} ✅"
+            else:
+                residual_cell = f"{r_score}"
+            dim_rows.append([
+                info["label"],
+                f"{score_bar} {info['score']}",
+                str(info["weight"]),
+                str(weighted_val),
+                residual_cell,
+                why or "—",
+            ])
+        else:
+            dim_rows.append([
+                info["label"],
+                f"{score_bar} {info['score']}",
+                str(info["weight"]),
+                str(weighted_val),
+                why or "—",
+            ])
     parts.append(rpt.subsection("Dimension Breakdown", rpt.table(dim_headers, dim_rows)))
+
+    # 7. Revision History (only if prior revisions exist)
+    if prior_revisions:
+        history_md = render_revision_history(
+            prior_revisions,
+            current_rev=cr.get("revision", 1),
+            current_addressed=cr.get("addressed_mitigations", []),
+            current_inherent=weighted_avg,
+            current_residual=residual_score,
+        )
+        if history_md:
+            parts.append(rpt.section("Revision History", history_md))
 
     # 7. Similar past changes
     if similar:
@@ -907,29 +1151,57 @@ def main():
     # Generate mitigations
     mitigations = generate_mitigations(cr, dim_results, risk_level)
 
-    # Load prior revision history (if any) and persist this revision
+    # Load prior revision history (if any) and compute residual risk
     prior_revisions = []
+    prior_mitigations: List[dict] = []
+    residual_dim_results = dim_results
+    residual_score = weighted_avg
+    residual_level = risk_level
+
     rev_cfg = config.get("revisions", {})
     if rev_cfg.get("enabled", True):
         history_root = SCRIPT_DIR / rev_cfg.get("history_dir", "change-revisions")
         prior_revisions = load_revision_history(str(history_root), cr.get("id", ""))
         if prior_revisions:
             print(f"  Found {len(prior_revisions)} prior revision(s) in history")
-        recommendation_str = go_nogo(risk_level, dim_results)
-        record = build_revision_record(cr, weighted_avg, risk_level,
-                                       recommendation_str, mitigations)
+            # Track addressed mitigations against the most recent prior
+            # revision's mitigation list (the "commitments" being audited).
+            prior_mitigations = prior_revisions[-1].get("mitigations", []) or []
+
+        # Apply addressed mitigations to inherent scores -> residual
+        addressed = cr.get("addressed_mitigations", [])
+        if prior_mitigations and addressed:
+            residual_dim_results, residual_score, residual_level = compute_residual(
+                dim_results, prior_mitigations, addressed, config
+            )
+            print(f"  Residual after {len(addressed)} addressed mitigation(s): "
+                  f"{residual_score}/5.0 ({residual_level})")
+
+        recommendation_str = go_nogo(residual_level, residual_dim_results)
+        record = build_revision_record(
+            cr, weighted_avg, risk_level, recommendation_str, mitigations,
+            residual_score=residual_score, residual_level=residual_level,
+        )
         save_path = save_revision_record(str(history_root), cr.get("id", ""), record)
         print(f"  Saved revision record: {save_path.name}")
 
     # Build and save report
     print("\n  Assembling report...")
-    report = build_report(cr, dim_results, weighted_avg, risk_level,
-                          similar, narrative, mitigations, config,
-                          prior_revisions=prior_revisions)
+    report = build_report(
+        cr, dim_results, weighted_avg, risk_level,
+        similar, narrative, mitigations, config,
+        prior_revisions=prior_revisions,
+        residual_dim_results=residual_dim_results,
+        residual_score=residual_score,
+        residual_level=residual_level,
+        prior_mitigations=prior_mitigations,
+    )
     rpt.save_report(args.output, report)
 
-    print(f"\n  Risk Level: {risk_level} ({weighted_avg}/5.0)")
-    print(f"  Report:     {args.output}")
+    print(f"\n  Inherent Risk: {risk_level} ({weighted_avg}/5.0)")
+    if residual_score != weighted_avg:
+        print(f"  Residual Risk: {residual_level} ({residual_score}/5.0)")
+    print(f"  Report:        {args.output}")
     print("=" * 60)
 
 

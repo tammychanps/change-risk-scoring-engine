@@ -98,13 +98,20 @@ def score_gauge(score: float, level: str, max_score: float = 5.0) -> str:
         "CRITICAL": "CRIT",
     }.get(level.upper(), level.upper()[:4])
 
-    # Mark the active band with a triangle
+    # Mark the active band with a triangle + show threshold boundaries
+    band_labels = {
+        "LOW": "LOW (≤2.0)",
+        "MED": "MED (≤3.0)",
+        "HIGH": "HIGH (≤4.0)",
+        "CRIT": "CRIT (>4.0)",
+    }
     gauge_parts = []
     for band in bands:
+        label = band_labels[band]
         if band == level_short:
-            gauge_parts.append(f"{band}▲")
+            gauge_parts.append(f"{label}▲")
         else:
-            gauge_parts.append(band)
+            gauge_parts.append(label)
     gauge_str = " │ ".join(gauge_parts)
 
     badge = risk_badge(level)
