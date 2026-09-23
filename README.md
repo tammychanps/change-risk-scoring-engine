@@ -44,6 +44,48 @@ The same CR ID is preserved across revisions. Each rev's full audit record (inhe
 | ≤ 4.0 | HIGH | 🟡 GO (conditional) — mitigations required |
 | > 4.0 | CRITICAL | 🔴 NO-GO — defer or decompose |
 
+## Why does this exist?
+
+Every major IT change management platform — ServiceNow, Jira Service Management, BMC Helix — has a "risk score" field on the change request form. In some, it's a dropdown. In the more sophisticated ones, it's auto-calculated from a generic questionnaire that asks the same checkbox questions for every change: a database migration scored the same way as a config flag flip. You get a number, but rarely the reasoning, and almost never a way to track how the risk changes as the team addresses mitigations.
+
+After years of running Change Advisory Boards in global banking, I noticed the same pattern at every CAB I sat in:
+
+- The risk score is set by the change requester, who is biased to call it "low" so the change moves faster.
+- It's reviewed by a CAB chair under time pressure, 5 minutes per change, 30+ changes per meeting.
+- The reasoning is rarely captured in writing, it lives in someone's head.
+- Patterns across changes (this team always under-scores their database changes) get lost.
+- The same change submitted on a Monday and a Friday gets scored differently depending on who's on the panel.
+
+This tool is an experiment in closing that gap.
+
+### What enterprise tools do today
+
+| Platform | Risk scoring | Where it falls short |
+|---|---|---|
+| **ServiceNow Change Management** | CAB workflow + manual low/med/high dropdown | Static rules, no NLP on the change description, no auto-explanation of *why* |
+| **Atlassian Jira Service Management** | Risk fields + calendar conflict detection | Manual scoring, no ML/NLP, no historical context |
+| **ServiceNow GRC + IRM** | Heavyweight enterprise risk scoring | Designed for ERM/compliance, not day-to-day CAB throughput |
+| **BMC Helix Change Management** | Workflow + risk matrix | Same manual scoring problem |
+
+### The gap
+
+Every major ITSM tool has a risk score field, but **nobody is using AI to read the change description, identify dependencies, predict blast radius, and explain its reasoning** the way a senior CAB chair would. The dropdowns and questionnaires capture *what was decided*, not *why*.
+
+That's the gap this tool explores.
+
+### What this tool is (and isn't)
+
+| It IS | It is NOT |
+|---|---|
+| A Python tool that reads a change request and writes a scored risk report with reasoning | A replacement for ServiceNow or Jira |
+| A learning artifact that translates 16 years of CAB chair instinct into code | A SaaS product |
+| Local-first by design (Ollama) so no change data leaves the machine | A multi-tenant deployment |
+| A demonstration of how AI-augmented governance could work in regulated banking | A finished product ready for prod rollout |
+
+### Why this matters for regulated banking
+
+In financial services, AI tools that touch change data, incident details, or risk metadata can't send that data to third-party APIs. This tool runs locally on Ollama as a proof-of-concept, but the same architecture extends naturally to enterprise patterns: private VPC + Bedrock, Azure OpenAI with customer-managed keys, or on-prem GPU inference. The principle stays the same, keep sensitive data inside the trust boundary.
+
 ## Architecture
 
 ```
